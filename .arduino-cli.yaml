@@ -1,0 +1,16 @@
+build_cache:
+  path: /Users/szymon/Documents/xiao/.arduino/cache
+
+board_manager:
+  additional_urls:
+    - https://espressif.github.io/arduino-esp32/package_esp32_dev_index.json
+
+directories:
+  data: /Users/szymon/Documents/xiao/.arduino/data
+  downloads: /Users/szymon/Documents/xiao/.arduino/downloads
+  user: /Users/szymon/Documents/xiao/.arduino/user
+
+sketchbook_path: /Users/szymon/Documents/xiao/.arduino/user
+
+updater:
+  enable_notification: false

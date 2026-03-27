@@ -1,0 +1,4 @@
+.arduino/
+bin/
+build/
+xiao_wifi_breathe/wifi_config.h

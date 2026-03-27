@@ -6,9 +6,11 @@ This repo contains firmware for a Seeed Studio XIAO ESP32-C6 that:
 
 - connects to Wi-Fi in STA mode
 - advertises itself as `xiao.local`
-- serves a web UI from the device
-- exposes HTTP endpoints for LED pattern control
+- serves a multi-app web UI from the device
+- exposes HTTP endpoints for LED pattern control, BLE scanning, and device telemetry
 - supports a custom Morse-code text mode
+- supports BLE scanning
+- exposes device telemetry including chip temperature
 - stores the selected pattern in NVS (`Preferences`)
 
 ## Current Architecture
@@ -32,25 +34,27 @@ Use the repo-local Arduino CLI and config:
 
 - CLI: `./bin/arduino-cli`
 - Config: `./.arduino-cli.yaml`
-- FQBN: `esp32:esp32:XIAO_ESP32C6`
+- FQBN: `esp32:esp32:XIAO_ESP32C6:PartitionScheme=huge_app`
 
 Preferred commands:
 
 ```sh
-./bin/arduino-cli compile --config-file .arduino-cli.yaml --fqbn esp32:esp32:XIAO_ESP32C6 --output-dir build/xiao_wifi_breathe xiao_wifi_breathe
-./bin/arduino-cli upload --config-file .arduino-cli.yaml -p /dev/cu.usbmodem1101 --fqbn esp32:esp32:XIAO_ESP32C6 xiao_wifi_breathe
-./bin/arduino-cli monitor --config-file .arduino-cli.yaml -p /dev/cu.usbmodem1101 --fqbn esp32:esp32:XIAO_ESP32C6
+./bin/arduino-cli compile --config-file .arduino-cli.yaml --fqbn esp32:esp32:XIAO_ESP32C6:PartitionScheme=huge_app --output-dir build/xiao_wifi_breathe xiao_wifi_breathe
+./bin/arduino-cli upload --config-file .arduino-cli.yaml -p /dev/cu.usbmodem1101 --fqbn esp32:esp32:XIAO_ESP32C6:PartitionScheme=huge_app xiao_wifi_breathe
+./bin/arduino-cli monitor --config-file .arduino-cli.yaml -p /dev/cu.usbmodem1101 --fqbn esp32:esp32:XIAO_ESP32C6:PartitionScheme=huge_app
 ```
 
 ## Behavior Contracts
 
 - The active pattern must switch immediately on `POST /api/pattern`.
 - The custom Morse text must switch immediately on `POST /api/morse`.
+- BLE scans must not block the LED loop or the HTTP server.
 - The active pattern must persist across reboot/power cycle.
 - The custom Morse text must persist when Morse mode is active.
 - The device should only become reachable at `xiao.local` after a successful Wi-Fi STA connection.
 - The LED loop must stay non-blocking so HTTP handling and Wi-Fi retries continue to work.
 - The browser depends on CDN-hosted React, ReactDOM, Tailwind, and Babel. The device serves only the HTML shell.
+- The UI is organized into three apps: Blink, Bluetooth, and Device Info.
 
 ## API Contract
 
@@ -58,6 +62,9 @@ Preferred commands:
 - `GET /api/state`: returns hostname, Wi-Fi state, IP, selected pattern label/id, pattern list, and current Morse text
 - `POST /api/pattern`: accepts JSON body with `"id"` and persists the new pattern
 - `POST /api/morse`: accepts JSON body with `"text"` and persists the active Morse message
+- `GET /api/bluetooth`: returns BLE scanner status and results
+- `POST /api/bluetooth/scan`: starts a BLE scan
+- `GET /api/device`: returns internal temperature and device telemetry
 
 Avoid changing these routes or the response shape unless the README is updated too.
 
@@ -86,15 +93,18 @@ If you rename the namespace or key, treat it as a migration-sensitive change.
 - If adding frontend behavior, keep it embedded in `web_app.h` unless there is a strong reason to add an asset pipeline
 - If changing pattern timing or adding patterns, keep the pattern table and API/state output in sync
 - If changing Morse support, keep the accepted character set, UI hint text, and request validation in sync
+- If changing BLE scanning, keep the scanner route and Bluetooth app UI in sync
+- If changing device telemetry, keep the Device Info app and README field descriptions in sync
 
 ## Verification Expectations
 
 After firmware changes, at minimum:
 
-1. compile successfully for `esp32:esp32:XIAO_ESP32C6`
+1. compile successfully for `esp32:esp32:XIAO_ESP32C6:PartitionScheme=huge_app`
 2. if relevant, upload to `/dev/cu.usbmodem1101`
 3. verify serial boot output for obvious failures
 4. if Wi-Fi credentials are present, verify `xiao.local` and the HTTP API
+5. if BLE changes are included, verify the Bluetooth scan route returns a clean scan state
 
 ## Known Constraints
 
@@ -103,3 +113,4 @@ After firmware changes, at minimum:
 - There is no fallback AP for recovery
 - The JSON parser for `POST /api/pattern` is intentionally minimal and assumes a simple request body
 - The JSON parser for `POST /api/morse` is also intentionally minimal; avoid introducing quote-heavy or deeply nested payload shapes without replacing the parser
+- BLE scanning uses the ESP32 Arduino BLE stack and adds significant flash usage; keep an eye on partition fit

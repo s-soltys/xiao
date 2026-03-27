@@ -5,8 +5,11 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - a web app served directly from the device
 - a React frontend loaded from CDN
 - Tailwind styling loaded from CDN
+- a multi-app layout with Blink, Bluetooth, and Device Info sections
 - 10 selectable LED patterns
 - a custom Morse-code message mode
+- a BLE scanner
+- a device-status app with internal temperature and system telemetry
 - pattern persistence across power cycles
 - automatic Wi-Fi station startup on boot
 - local discovery at `http://xiao.local/` after Wi-Fi connects
@@ -16,6 +19,7 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 On boot, the firmware:
 
 - enables the XIAO ESP32-C6 Wi-Fi hardware
+- initializes the BLE scanner
 - loads the last selected LED pattern from NVS (`Preferences`)
 - starts Wi-Fi in station mode using `wifi_config.h`
 - starts an HTTP server on port `80` after Wi-Fi connects
@@ -58,22 +62,24 @@ If `wifi_config.h` is empty or invalid:
 
 This repo uses a local Arduino CLI install under `./bin` and local package/cache directories under `./.arduino`.
 
+Important: this firmware requires the `Huge APP (3MB No OTA/1MB SPIFFS)` partition scheme because the default 1.2MB app partition is too small once BLE scanning and the larger multi-app UI are included.
+
 Compile:
 
 ```sh
-./bin/arduino-cli compile --config-file .arduino-cli.yaml --fqbn esp32:esp32:XIAO_ESP32C6 --output-dir build/xiao_wifi_breathe xiao_wifi_breathe
+./bin/arduino-cli compile --config-file .arduino-cli.yaml --fqbn esp32:esp32:XIAO_ESP32C6:PartitionScheme=huge_app --output-dir build/xiao_wifi_breathe xiao_wifi_breathe
 ```
 
 Upload:
 
 ```sh
-./bin/arduino-cli upload --config-file .arduino-cli.yaml -p /dev/cu.usbmodem1101 --fqbn esp32:esp32:XIAO_ESP32C6 xiao_wifi_breathe
+./bin/arduino-cli upload --config-file .arduino-cli.yaml -p /dev/cu.usbmodem1101 --fqbn esp32:esp32:XIAO_ESP32C6:PartitionScheme=huge_app xiao_wifi_breathe
 ```
 
 Serial monitor:
 
 ```sh
-./bin/arduino-cli monitor --config-file .arduino-cli.yaml -p /dev/cu.usbmodem1101 --fqbn esp32:esp32:XIAO_ESP32C6
+./bin/arduino-cli monitor --config-file .arduino-cli.yaml -p /dev/cu.usbmodem1101 --fqbn esp32:esp32:XIAO_ESP32C6:PartitionScheme=huge_app
 ```
 
 ## Web App
@@ -90,6 +96,14 @@ The browser loads:
 - Babel standalone from CDN
 
 The device serves the HTML shell itself, but the browser still needs internet access for those CDN assets.
+
+## Apps
+
+The web UI is split into three apps:
+
+- `Blink App`: preset LED patterns plus custom Morse playback
+- `Bluetooth Scanner`: scans nearby BLE advertisers and shows scan results
+- `Device Info`: shows internal chip temperature and device telemetry
 
 ## HTTP API
 
@@ -146,6 +160,33 @@ Effect:
 - stores both the active mode and the normalized text in NVS
 - returns the updated state JSON
 
+### `GET /api/bluetooth`
+
+Returns BLE scanner state:
+
+- whether Bluetooth scanning is available
+- whether a scan is in progress
+- last scan timestamps
+- scanner error state
+- discovered BLE devices and their signal/advertisement details
+
+### `POST /api/bluetooth/scan`
+
+Starts a BLE scan and returns the updated scanner state JSON.
+
+### `GET /api/device`
+
+Returns device telemetry including:
+
+- chip model and revision
+- SDK version and CPU frequency
+- uptime
+- internal chip temperature
+- heap and flash stats
+- sketch size and free sketch space
+- eFuse MAC, IP, Wi-Fi RSSI
+- BLE stack status
+
 ## Available Patterns
 
 The firmware exposes these 10 patterns:
@@ -182,6 +223,8 @@ The custom Morse text is persisted in:
 - mDNS is started only after Wi-Fi connects.
 - The hostname shown and advertised is `xiao.local`.
 - Morse input supports letters, digits, spaces, and `. , ? ! - / @ ( )`.
+- BLE scanning is BLE-only, not classic Bluetooth discovery.
+- The default partition scheme is too small; use `PartitionScheme=huge_app`.
 
 ## Troubleshooting
 

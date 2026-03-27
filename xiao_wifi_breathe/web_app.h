@@ -6,7 +6,7 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>XIAO Pattern Console</title>
+    <title>XIAO Device Console</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -53,158 +53,311 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
         );
       }
 
+      function AppTab({ id, activeApp, onSelect, label, description }) {
+        const active = activeApp === id;
+        return (
+          <button
+            type="button"
+            onClick={() => onSelect(id)}
+            className={[
+              'rounded-3xl border px-4 py-4 text-left transition',
+              active
+                ? 'border-slate-950 bg-slate-950 text-white shadow-panel'
+                : 'border-white/70 bg-white/80 text-slate-900 hover:border-slate-300 hover:bg-white',
+            ].join(' ')}
+          >
+            <div className="text-sm font-bold">{label}</div>
+            <div className={`mt-2 text-sm ${active ? 'text-slate-300' : 'text-slate-500'}`}>{description}</div>
+          </button>
+        );
+      }
+
+      function MetricCard({ label, value, hint }) {
+        return (
+          <div className="rounded-3xl border border-white/70 bg-white/85 px-4 py-4 shadow-sm">
+            <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-slate-500">{label}</div>
+            <div className="mt-2 text-2xl font-bold text-slate-900">{value}</div>
+            {hint ? <div className="mt-2 text-sm text-slate-500">{hint}</div> : null}
+          </div>
+        );
+      }
+
+      function formatBytes(value) {
+        if (value === null || value === undefined) {
+          return '—';
+        }
+
+        if (value >= 1024 * 1024) {
+          return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+        }
+
+        if (value >= 1024) {
+          return `${(value / 1024).toFixed(1)} KB`;
+        }
+
+        return `${value} B`;
+      }
+
+      function formatUptime(ms) {
+        if (!ms && ms !== 0) {
+          return '—';
+        }
+
+        const totalSeconds = Math.floor(ms / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        return `${hours}h ${minutes}m ${seconds}s`;
+      }
+
+      function formatRelativeMs(ms) {
+        if (!ms) {
+          return '—';
+        }
+
+        return formatUptime(ms);
+      }
+
       function App() {
-        const [state, setState] = useState(null);
+        const [activeApp, setActiveApp] = useState('blink');
+        const [blinkState, setBlinkState] = useState(null);
+        const [bluetoothState, setBluetoothState] = useState(null);
+        const [deviceState, setDeviceState] = useState(null);
         const [loading, setLoading] = useState(true);
-        const [busyId, setBusyId] = useState('');
+        const [refreshing, setRefreshing] = useState(false);
+        const [blinkBusyId, setBlinkBusyId] = useState('');
+        const [scanBusy, setScanBusy] = useState(false);
         const [error, setError] = useState('');
         const [morseInput, setMorseInput] = useState('');
 
-        async function fetchState() {
-          setLoading(true);
-          setError('');
-
-          try {
-            const response = await fetch('/api/state', { cache: 'no-store' });
-            if (!response.ok) {
-              throw new Error(`State request failed with ${response.status}`);
-            }
-            const payload = await response.json();
-            setState(payload);
-            setMorseInput(payload.morseText || '');
-          } catch (fetchError) {
-            setError(fetchError.message || 'Unable to load device state.');
-          } finally {
-            setLoading(false);
+        async function fetchJson(url, options) {
+          const response = await fetch(url, options);
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.error || `Request failed with ${response.status}`);
           }
+          return payload;
         }
 
-        async function activateMorse(event) {
-          event.preventDefault();
-          setBusyId('morse-text');
+        async function fetchBlinkState() {
+          const payload = await fetchJson('/api/state', { cache: 'no-store' });
+          setBlinkState(payload);
+          setMorseInput(payload.morseText || '');
+          return payload;
+        }
+
+        async function fetchBluetoothState() {
+          const payload = await fetchJson('/api/bluetooth', { cache: 'no-store' });
+          setBluetoothState(payload);
+          return payload;
+        }
+
+        async function fetchDeviceState() {
+          const payload = await fetchJson('/api/device', { cache: 'no-store' });
+          setDeviceState(payload);
+          return payload;
+        }
+
+        async function refreshAll(initial = false) {
+          if (initial) {
+            setLoading(true);
+          }
+          setRefreshing(true);
           setError('');
 
-          try {
-            const response = await fetch('/api/morse', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ text: morseInput }),
-            });
+          const [blinkResult, bluetoothResult, deviceResult] = await Promise.allSettled([
+            fetchBlinkState(),
+            fetchBluetoothState(),
+            fetchDeviceState(),
+          ]);
 
-            const payload = await response.json();
-            if (!response.ok) {
-              throw new Error(payload.error || `Morse update failed with ${response.status}`);
-            }
-
-            setState(payload);
-            setMorseInput(payload.morseText || '');
-          } catch (requestError) {
-            setError(requestError.message || 'Unable to update the Morse pattern.');
-          } finally {
-            setBusyId('');
+          const firstError = [blinkResult, bluetoothResult, deviceResult].find((result) => result.status === 'rejected');
+          if (firstError) {
+            setError(firstError.reason?.message || 'Unable to refresh one or more apps.');
           }
+
+          setLoading(false);
+          setRefreshing(false);
         }
 
         useEffect(() => {
-          fetchState();
+          refreshAll(true);
         }, []);
 
+        useEffect(() => {
+          if (!bluetoothState?.scanning) {
+            return undefined;
+          }
+
+          const intervalId = window.setInterval(() => {
+            fetchBluetoothState().catch((requestError) => {
+              setError(requestError.message || 'Unable to refresh Bluetooth state.');
+            });
+          }, 1500);
+
+          return () => window.clearInterval(intervalId);
+        }, [bluetoothState?.scanning]);
+
+        useEffect(() => {
+          if (activeApp !== 'device') {
+            return undefined;
+          }
+
+          const intervalId = window.setInterval(() => {
+            fetchDeviceState().catch(() => {});
+          }, 5000);
+
+          return () => window.clearInterval(intervalId);
+        }, [activeApp]);
+
         async function activatePattern(patternId) {
-          setBusyId(patternId);
+          setBlinkBusyId(patternId);
           setError('');
 
           try {
-            const response = await fetch('/api/pattern', {
+            const payload = await fetchJson('/api/pattern', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({ id: patternId }),
             });
-
-            const payload = await response.json();
-            if (!response.ok) {
-              throw new Error(payload.error || `Pattern change failed with ${response.status}`);
-            }
-
-            setState(payload);
+            setBlinkState(payload);
           } catch (requestError) {
             setError(requestError.message || 'Unable to update the active pattern.');
           } finally {
-            setBusyId('');
+            setBlinkBusyId('');
           }
         }
 
-        if (loading && !state) {
+        async function activateMorse(event) {
+          event.preventDefault();
+          setBlinkBusyId('morse-text');
+          setError('');
+
+          try {
+            const payload = await fetchJson('/api/morse', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ text: morseInput }),
+            });
+            setBlinkState(payload);
+            setMorseInput(payload.morseText || '');
+          } catch (requestError) {
+            setError(requestError.message || 'Unable to update the Morse pattern.');
+          } finally {
+            setBlinkBusyId('');
+          }
+        }
+
+        async function startBluetoothScan() {
+          setScanBusy(true);
+          setError('');
+
+          try {
+            const payload = await fetchJson('/api/bluetooth/scan', {
+              method: 'POST',
+            });
+            setBluetoothState(payload);
+          } catch (requestError) {
+            setError(requestError.message || 'Unable to start the Bluetooth scan.');
+          } finally {
+            setScanBusy(false);
+          }
+        }
+
+        if (loading && !blinkState) {
           return (
             <main className="mx-auto flex min-h-screen max-w-6xl items-center px-5 py-10">
               <div className="w-full rounded-[2rem] border border-white/70 bg-white/70 p-8 shadow-panel backdrop-blur">
                 <p className="text-sm uppercase tracking-[0.3em] text-teal-700">Bootstrapping</p>
-                <h1 className="mt-3 text-3xl font-bold sm:text-5xl">XIAO Pattern Console</h1>
+                <h1 className="mt-3 text-3xl font-bold sm:text-5xl">XIAO Device Console</h1>
                 <p className="mt-4 max-w-2xl text-base text-slate-600 sm:text-lg">
-                  Waiting for the device state endpoint to respond.
+                  Waiting for the device apps to report their state.
                 </p>
               </div>
             </main>
           );
         }
 
+        const sortedBleResults = (bluetoothState?.results || []).slice().sort((left, right) => right.rssi - left.rssi);
+
         return (
-          <main className="mx-auto flex min-h-screen max-w-6xl px-5 py-8 sm:py-10">
+          <main className="mx-auto flex min-h-screen max-w-7xl px-5 py-8 sm:py-10">
             <div className="w-full rounded-[2rem] border border-white/80 bg-white/75 p-6 shadow-panel backdrop-blur sm:p-8">
               <div className="flex flex-col gap-8">
                 <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.35em] text-teal-700">Local LED Control</p>
+                    <p className="text-xs font-medium uppercase tracking-[0.35em] text-teal-700">Multi-App Device Console</p>
                     <h1 className="mt-3 text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">
-                      XIAO Pattern Console
+                      XIAO Device Console
                     </h1>
-                    <p className="mt-4 max-w-2xl text-base text-slate-600 sm:text-lg">
-                      Select one of ten stored LED behaviors. The active pattern switches immediately and
-                      survives power cycles.
+                    <p className="mt-4 max-w-3xl text-base text-slate-600 sm:text-lg">
+                      Switch between the Blink app, Bluetooth scanner, and Device Info app. All apps are served directly
+                      from the XIAO ESP32-C6.
                     </p>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
                     <StatusCard
                       label="Reachability"
-                      value={state?.connected ? state.hostname : 'Waiting for Wi-Fi'}
-                      tone={state?.connected ? 'online' : 'offline'}
+                      value={blinkState?.connected ? blinkState.hostname : 'Waiting for Wi-Fi'}
+                      tone={blinkState?.connected ? 'online' : 'offline'}
                     />
                     <StatusCard
                       label="Network"
-                      value={state?.connected ? `${state.ssid} • ${state.ip}` : 'STA mode retrying'}
-                      tone={state?.connected ? 'neutral' : 'offline'}
+                      value={blinkState?.connected ? `${blinkState.ssid} • ${blinkState.ip}` : 'STA mode retrying'}
+                      tone={blinkState?.connected ? 'neutral' : 'offline'}
+                    />
+                    <StatusCard
+                      label="Hardware"
+                      value={deviceState ? `${deviceState.chipModel} rev ${deviceState.chipRevision}` : 'Loading chip info'}
+                      tone="neutral"
                     />
                   </div>
                 </section>
 
-                <section className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+                <section className="grid gap-3 lg:grid-cols-3">
+                  <AppTab
+                    id="blink"
+                    activeApp={activeApp}
+                    onSelect={setActiveApp}
+                    label="Blink App"
+                    description="Preset LED patterns plus custom Morse playback."
+                  />
+                  <AppTab
+                    id="bluetooth"
+                    activeApp={activeApp}
+                    onSelect={setActiveApp}
+                    label="Bluetooth Scanner"
+                    description="Scan nearby BLE advertisers and inspect signal details."
+                  />
+                  <AppTab
+                    id="device"
+                    activeApp={activeApp}
+                    onSelect={setActiveApp}
+                    label="Device Info"
+                    description="Chip telemetry, internal temperature, memory, flash, and radio status."
+                  />
+                </section>
+
+                <section className="flex flex-wrap items-center justify-between gap-3">
                   <div className="rounded-3xl border border-slate-200 bg-slate-950 px-5 py-4 text-white">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">
-                      Active Pattern
-                    </div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">Current Focus</div>
                     <div className="mt-2 text-2xl font-bold sm:text-3xl">
-                      {state?.selectedPatternLabel || 'Unknown'}
+                      {activeApp === 'blink' ? 'Blink App' : activeApp === 'bluetooth' ? 'Bluetooth Scanner' : 'Device Info'}
                     </div>
-                    <div className="mt-2 text-sm text-slate-300">
-                      Hostname: <span className="font-semibold text-white">{state?.hostname || 'xiao.local'}</span>
-                    </div>
-                    {state?.selectedPatternId === 'morse-text' && state?.morseText ? (
-                      <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
-                        Message: <span className="font-semibold text-white">{state.morseText}</span>
-                      </div>
-                    ) : null}
                   </div>
 
                   <button
                     type="button"
-                    onClick={fetchState}
-                    className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-900 hover:text-slate-900"
+                    onClick={() => refreshAll(false)}
+                    disabled={refreshing}
+                    className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-60"
                   >
-                    Refresh State
+                    {refreshing ? 'Refreshing…' : 'Refresh Apps'}
                   </button>
                 </section>
 
@@ -214,70 +367,211 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                   </div>
                 ) : null}
 
-                <section className="grid gap-4 rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm lg:grid-cols-[1.3fr_auto] lg:items-end">
-                  <form className="grid gap-3" onSubmit={activateMorse}>
-                    <div>
-                      <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">
-                        Custom Morse
+                {activeApp === 'blink' ? (
+                  <section className="grid gap-6">
+                    <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+                      <div className="rounded-3xl border border-slate-200 bg-slate-950 px-5 py-4 text-white">
+                        <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">Active Pattern</div>
+                        <div className="mt-2 text-2xl font-bold sm:text-3xl">
+                          {blinkState?.selectedPatternLabel || 'Unknown'}
+                        </div>
+                        {blinkState?.selectedPatternId === 'morse-text' && blinkState?.morseText ? (
+                          <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                            Message: <span className="font-semibold text-white">{blinkState.morseText}</span>
+                          </div>
+                        ) : null}
                       </div>
-                      <h2 className="mt-2 text-2xl font-bold text-slate-900">Type a message to blink in Morse code</h2>
-                      <p className="mt-2 text-sm text-slate-600">
-                        Supported characters: letters, digits, spaces, and <span className="font-medium">. , ? ! - / @ ( )</span>.
-                      </p>
+
+                      <form
+                        className="grid gap-3 rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm"
+                        onSubmit={activateMorse}
+                      >
+                        <div>
+                          <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Custom Morse</div>
+                          <h2 className="mt-2 text-2xl font-bold text-slate-900">Type a message to blink in Morse code</h2>
+                          <p className="mt-2 text-sm text-slate-600">
+                            Supported characters: letters, digits, spaces, and <span className="font-medium">. , ? ! - / @ ( )</span>.
+                          </p>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={morseInput}
+                          onChange={(event) => setMorseInput(event.target.value)}
+                          maxLength={64}
+                          placeholder="HELLO XIAO"
+                          disabled={Boolean(blinkBusyId)}
+                          className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 disabled:opacity-60"
+                        />
+
+                        <button
+                          type="submit"
+                          disabled={Boolean(blinkBusyId)}
+                          className="inline-flex min-h-[52px] items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {blinkBusyId === 'morse-text' ? 'Saving Morse…' : 'Blink Morse'}
+                        </button>
+                      </form>
                     </div>
 
-                    <input
-                      type="text"
-                      value={morseInput}
-                      onChange={(event) => setMorseInput(event.target.value)}
-                      maxLength={64}
-                      placeholder="HELLO XIAO"
-                      disabled={Boolean(busyId)}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 disabled:opacity-60"
-                    />
-                  </form>
+                    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                      {blinkState?.patterns?.map((pattern, index) => {
+                        const isActive = pattern.id === blinkState.selectedPatternId;
+                        const isBusy = blinkBusyId === pattern.id;
 
-                  <button
-                    type="button"
-                    onClick={(event) => activateMorse(event)}
-                    disabled={Boolean(busyId)}
-                    className="inline-flex min-h-[52px] items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {busyId === 'morse-text' ? 'Saving Morse…' : 'Blink Morse'}
-                  </button>
-                </section>
+                        return (
+                          <button
+                            key={pattern.id}
+                            type="button"
+                            onClick={() => activatePattern(pattern.id)}
+                            disabled={Boolean(blinkBusyId)}
+                            className={[
+                              'group min-h-[132px] rounded-3xl border px-4 py-4 text-left transition duration-200',
+                              'focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2',
+                              isActive
+                                ? 'border-slate-950 bg-slate-950 text-white shadow-panel'
+                                : 'border-white/70 bg-white/80 text-slate-900 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white',
+                              blinkBusyId && !isBusy ? 'opacity-60' : '',
+                            ].join(' ')}
+                          >
+                            <div className="text-[11px] font-medium uppercase tracking-[0.28em] opacity-70">
+                              {String(index + 1).padStart(2, '0')}
+                            </div>
+                            <div className="mt-4 text-xl font-bold">{pattern.label}</div>
+                            <div className={`mt-3 text-sm ${isActive ? 'text-teal-300' : 'text-slate-500'}`}>
+                              {isBusy ? 'Switching now…' : isActive ? 'Stored and running' : 'Tap to activate'}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </section>
+                  </section>
+                ) : null}
 
-                <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                  {state?.patterns?.map((pattern, index) => {
-                    const isActive = pattern.id === state.selectedPatternId;
-                    const isBusy = busyId === pattern.id;
+                {activeApp === 'bluetooth' ? (
+                  <section className="grid gap-6">
+                    <section className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+                      <div className="rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm">
+                        <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Nearby BLE Devices</div>
+                        <h2 className="mt-2 text-3xl font-bold text-slate-900">Bluetooth Scanner</h2>
+                        <p className="mt-2 text-sm text-slate-600">
+                          Runs a {bluetoothState?.durationSeconds || 5}-second BLE scan and lists nearby advertisers.
+                        </p>
+                      </div>
 
-                    return (
                       <button
-                        key={pattern.id}
                         type="button"
-                        onClick={() => activatePattern(pattern.id)}
-                        disabled={Boolean(busyId)}
-                        className={[
-                          'group min-h-[132px] rounded-3xl border px-4 py-4 text-left transition duration-200',
-                          'focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2',
-                          isActive
-                            ? 'border-slate-950 bg-slate-950 text-white shadow-panel'
-                            : 'border-white/70 bg-white/80 text-slate-900 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white',
-                          busyId && !isBusy ? 'opacity-60' : '',
-                        ].join(' ')}
+                        onClick={startBluetoothScan}
+                        disabled={scanBusy || bluetoothState?.scanning || !bluetoothState?.available}
+                        className="inline-flex min-h-[52px] items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        <div className="text-[11px] font-medium uppercase tracking-[0.28em] opacity-70">
-                          {String(index + 1).padStart(2, '0')}
-                        </div>
-                        <div className="mt-4 text-xl font-bold">{pattern.label}</div>
-                        <div className={`mt-3 text-sm ${isActive ? 'text-teal-300' : 'text-slate-500'}`}>
-                          {isBusy ? 'Switching now…' : isActive ? 'Stored and running' : 'Tap to activate'}
-                        </div>
+                        {bluetoothState?.scanning ? 'Scanning…' : scanBusy ? 'Starting Scan…' : 'Start BLE Scan'}
                       </button>
-                    );
-                  })}
-                </section>
+                    </section>
+
+                    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <StatusCard
+                        label="Scanner"
+                        value={bluetoothState?.available ? 'Ready' : 'Unavailable'}
+                        tone={bluetoothState?.available ? 'online' : 'offline'}
+                      />
+                      <StatusCard
+                        label="State"
+                        value={bluetoothState?.scanning ? 'Scan in progress' : 'Idle'}
+                        tone={bluetoothState?.scanning ? 'online' : 'neutral'}
+                      />
+                      <StatusCard
+                        label="Results"
+                        value={`${bluetoothState?.results?.length || 0} devices`}
+                        tone="neutral"
+                      />
+                      <StatusCard
+                        label="Last Complete"
+                        value={formatRelativeMs(bluetoothState?.lastCompletedAtMs)}
+                        tone="neutral"
+                      />
+                    </section>
+
+                    {bluetoothState?.error ? (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                        {bluetoothState.error}
+                      </div>
+                    ) : null}
+
+                    <section className="grid gap-3">
+                      {sortedBleResults.length === 0 ? (
+                        <div className="rounded-[1.75rem] border border-dashed border-slate-300 bg-white/70 px-5 py-10 text-center text-sm text-slate-500">
+                          {bluetoothState?.scanning
+                            ? 'Scanning for nearby BLE devices…'
+                            : 'No BLE devices captured yet. Start a scan to populate this list.'}
+                        </div>
+                      ) : (
+                        sortedBleResults.map((device) => (
+                          <div
+                            key={device.address}
+                            className="grid gap-3 rounded-[1.5rem] border border-white/70 bg-white/85 px-5 py-4 shadow-sm lg:grid-cols-[1.4fr_repeat(4,minmax(0,1fr))]"
+                          >
+                            <div>
+                              <div className="text-lg font-bold text-slate-900">{device.name || 'Unnamed advertiser'}</div>
+                              <div className="mt-1 text-sm text-slate-500">{device.address}</div>
+                              {device.serviceUuid ? (
+                                <div className="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                                  Service {device.serviceUuid}
+                                </div>
+                              ) : null}
+                            </div>
+                            <MetricCard label="RSSI" value={`${device.rssi} dBm`} hint={device.connectable ? 'Connectable' : 'Broadcast only'} />
+                            <MetricCard
+                              label="TX Power"
+                              value={device.hasTxPower ? `${device.txPower} dBm` : '—'}
+                              hint={device.scannable ? 'Scannable' : 'Not scannable'}
+                            />
+                            <MetricCard label="Address Type" value={device.addressType} hint={device.legacy ? 'Legacy advertisement' : 'Extended capable'} />
+                            <MetricCard label="Mode" value={device.connectable ? 'Connectable' : 'Observer'} hint={device.name ? 'Name broadcast present' : 'Name missing'} />
+                          </div>
+                        ))
+                      )}
+                    </section>
+                  </section>
+                ) : null}
+
+                {activeApp === 'device' ? (
+                  <section className="grid gap-6">
+                    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <MetricCard
+                        label="Chip Temperature"
+                        value={deviceState?.temperatureC === null || deviceState?.temperatureC === undefined ? '—' : `${deviceState.temperatureC.toFixed(1)} °C`}
+                        hint="Internal sensor exposed by the ESP32 Arduino core"
+                      />
+                      <MetricCard label="Uptime" value={formatUptime(deviceState?.uptimeMs)} hint="Since last boot" />
+                      <MetricCard
+                        label="Wi-Fi RSSI"
+                        value={deviceState?.wifiRssi === null || deviceState?.wifiRssi === undefined ? '—' : `${deviceState.wifiRssi} dBm`}
+                        hint={deviceState?.wifiConnected ? 'Current station signal strength' : 'Not connected'}
+                      />
+                      <MetricCard label="Free Heap" value={formatBytes(deviceState?.freeHeap)} hint={`Min ${formatBytes(deviceState?.minFreeHeap)}`} />
+                    </section>
+
+                    <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      <MetricCard label="Chip" value={deviceState ? `${deviceState.chipModel} rev ${deviceState.chipRevision}` : '—'} hint={`${deviceState?.chipCores || '—'} core(s)`} />
+                      <MetricCard label="SDK" value={deviceState?.sdkVersion || '—'} hint={`${deviceState?.cpuFreqMHz || '—'} MHz CPU`} />
+                      <MetricCard label="Flash" value={formatBytes(deviceState?.flashChipSize)} hint={`Sketch ${formatBytes(deviceState?.sketchSize)}`} />
+                      <MetricCard label="Free Sketch Space" value={formatBytes(deviceState?.freeSketchSpace)} hint="Remaining OTA/app slot space" />
+                      <MetricCard label="eFuse MAC" value={deviceState?.efuseMac || '—'} hint={deviceState?.ip || 'No current IP'} />
+                      <MetricCard label="BLE Stack" value={deviceState?.bleStack || '—'} hint={deviceState?.bleReady ? 'Bluetooth initialized' : 'Bluetooth unavailable'} />
+                    </section>
+
+                    <div className="rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm">
+                      <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Sensor Notes</div>
+                      <h2 className="mt-2 text-2xl font-bold text-slate-900">Internal Device Status</h2>
+                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                        On this firmware build, the main internal sensor exposed directly by the Arduino ESP32 core is the chip
+                        temperature sensor. The rest of this page shows device telemetry such as memory, flash usage, radio state,
+                        and chip metadata.
+                      </p>
+                    </div>
+                  </section>
+                ) : null}
               </div>
             </div>
           </main>

@@ -1,9 +1,13 @@
+#include <BLEDevice.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <ctype.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "web_app.h"
@@ -31,6 +35,8 @@ constexpr uint32_t kWifiReconnectIntervalMs = 15000;
 constexpr uint16_t kMorseUnitMs = 180;
 constexpr size_t kMaxMorseTextLength = 64;
 constexpr size_t kMaxMorseSteps = 512;
+constexpr uint32_t kBleScanDurationSeconds = 5;
+constexpr size_t kMaxBleDevices = 20;
 constexpr char kPreferenceNamespace[] = "xiao-app";
 constexpr char kPatternPreferenceKey[] = "pattern";
 constexpr char kMorseTextPreferenceKey[] = "morseText";
@@ -55,6 +61,19 @@ struct PatternDefinition {
   const PatternStep *steps;
   size_t stepCount;
   uint32_t cycleMs;
+};
+
+struct BleScanResultEntry {
+  String address;
+  String name;
+  String serviceUuid;
+  int rssi;
+  bool hasTxPower;
+  int txPower;
+  bool connectable;
+  bool scannable;
+  bool legacy;
+  uint8_t addressType;
 };
 
 const PatternStep kSosSteps[] = {
@@ -120,18 +139,27 @@ const PatternDefinition kPatterns[] = {
 
 WebServer webServer(kHttpPort);
 Preferences preferences;
+BLEScan *bleScan = nullptr;
+SemaphoreHandle_t bleScanMutex = nullptr;
 PatternStep morseSteps[kMaxMorseSteps];
 PatternDefinition morsePattern = {kMorsePatternId, kMorsePatternLabel, PatternMode::kSequence, morseSteps, 0, 0};
+BleScanResultEntry bleResults[kMaxBleDevices];
 
 const PatternDefinition *activePattern = &kPatterns[0];
 String morseText;
 size_t activeStepIndex = 0;
+size_t bleResultCount = 0;
 uint32_t activeStepStartedAtMs = 0;
 uint32_t lastWifiAttemptMs = 0;
+uint32_t bleScanStartedAtMs = 0;
+uint32_t bleScanCompletedAtMs = 0;
 wl_status_t lastWifiStatus = WL_IDLE_STATUS;
 bool wifiWarningPrinted = false;
 bool webServerStarted = false;
 bool mdnsStarted = false;
+bool bleReady = false;
+bool bleScanInProgress = false;
+String bleScanError;
 
 bool hasWifiCredentials() {
   return kWifiSsid[0] != '\0' && kWifiPassword[0] != '\0';
@@ -141,6 +169,39 @@ uint8_t gammaCorrect(float normalizedBrightness) {
   normalizedBrightness = constrain(normalizedBrightness, 0.0f, 1.0f);
   const float corrected = powf(normalizedBrightness, 2.2f);
   return static_cast<uint8_t>(corrected * kPwmMax + 0.5f);
+}
+
+String formatMacAddress(uint64_t mac) {
+  char buffer[18];
+  snprintf(
+    buffer, sizeof(buffer), "%02X:%02X:%02X:%02X:%02X:%02X", static_cast<unsigned int>((mac >> 40) & 0xFF), static_cast<unsigned int>((mac >> 32) & 0xFF),
+    static_cast<unsigned int>((mac >> 24) & 0xFF), static_cast<unsigned int>((mac >> 16) & 0xFF), static_cast<unsigned int>((mac >> 8) & 0xFF),
+    static_cast<unsigned int>(mac & 0xFF)
+  );
+  return String(buffer);
+}
+
+String floatToJson(float value, uint8_t decimals = 1) {
+  if (isnan(value) || isinf(value)) {
+    return F("null");
+  }
+
+  return String(static_cast<double>(value), static_cast<unsigned int>(decimals));
+}
+
+const char *bleAddressTypeLabel(uint8_t addressType) {
+  switch (addressType) {
+    case 0:
+      return "public";
+    case 1:
+      return "random";
+    case 2:
+      return "public-id";
+    case 3:
+      return "random-id";
+    default:
+      return "unknown";
+  }
 }
 
 void setLedBrightness(uint8_t brightness) {
@@ -160,6 +221,73 @@ const PatternDefinition *findPatternById(const String &patternId) {
   }
 
   return nullptr;
+}
+
+void clearBleScanResultsLocked() {
+  for (size_t index = 0; index < kMaxBleDevices; ++index) {
+    bleResults[index].address = String("");
+    bleResults[index].name = String("");
+    bleResults[index].serviceUuid = String("");
+    bleResults[index].rssi = 0;
+    bleResults[index].hasTxPower = false;
+    bleResults[index].txPower = 0;
+    bleResults[index].connectable = false;
+    bleResults[index].scannable = false;
+    bleResults[index].legacy = false;
+    bleResults[index].addressType = 0;
+  }
+  bleResultCount = 0;
+}
+
+void setBleScanStatus(bool scanning, const String &errorMessage) {
+  if (bleScanMutex == nullptr) {
+    return;
+  }
+
+  if (xSemaphoreTake(bleScanMutex, pdMS_TO_TICKS(250)) == pdTRUE) {
+    bleScanInProgress = scanning;
+    bleScanError = errorMessage;
+    if (scanning) {
+      bleScanStartedAtMs = millis();
+      clearBleScanResultsLocked();
+    } else {
+      bleScanCompletedAtMs = millis();
+    }
+    xSemaphoreGive(bleScanMutex);
+  }
+}
+
+void handleBleScanComplete(BLEScanResults scanResults) {
+  if (bleScanMutex != nullptr && xSemaphoreTake(bleScanMutex, portMAX_DELAY) == pdTRUE) {
+    clearBleScanResultsLocked();
+
+    const int totalResults = scanResults.getCount();
+    const size_t cappedResults = totalResults > static_cast<int>(kMaxBleDevices) ? kMaxBleDevices : static_cast<size_t>(totalResults);
+    for (size_t index = 0; index < cappedResults; ++index) {
+      BLEAdvertisedDevice device = scanResults.getDevice(index);
+      BleScanResultEntry &entry = bleResults[index];
+      entry.address = device.getAddress().toString();
+      entry.name = device.haveName() ? device.getName() : String("");
+      entry.serviceUuid = device.haveServiceUUID() ? device.getServiceUUID().toString() : String("");
+      entry.rssi = device.getRSSI();
+      entry.hasTxPower = device.haveTXPower();
+      entry.txPower = device.haveTXPower() ? device.getTXPower() : 0;
+      entry.connectable = device.isConnectable();
+      entry.scannable = device.isScannable();
+      entry.legacy = device.isLegacyAdvertisement();
+      entry.addressType = device.getAddressType();
+      ++bleResultCount;
+    }
+
+    bleScanInProgress = false;
+    bleScanCompletedAtMs = millis();
+    bleScanError = String("");
+    xSemaphoreGive(bleScanMutex);
+  }
+
+  if (bleScan != nullptr) {
+    bleScan->clearResults();
+  }
 }
 
 const char *lookupMorseCode(char character) {
@@ -477,6 +605,114 @@ String buildStateJson() {
   return json;
 }
 
+String buildBluetoothJson() {
+  String json;
+  json.reserve(4096);
+
+  json += F("{\"available\":");
+  json += bleReady ? F("true") : F("false");
+  json += F(",\"scanning\":");
+  json += bleScanInProgress ? F("true") : F("false");
+  json += F(",\"durationSeconds\":");
+  json += String(kBleScanDurationSeconds);
+  json += F(",\"lastStartedAtMs\":");
+  json += String(bleScanStartedAtMs);
+  json += F(",\"lastCompletedAtMs\":");
+  json += String(bleScanCompletedAtMs);
+  json += F(",\"error\":\"");
+  json += jsonEscape(bleScanError);
+  json += F("\",\"results\":[");
+
+  if (bleScanMutex != nullptr && xSemaphoreTake(bleScanMutex, pdMS_TO_TICKS(250)) == pdTRUE) {
+    for (size_t index = 0; index < bleResultCount; ++index) {
+      if (index > 0) {
+        json += ',';
+      }
+
+      const BleScanResultEntry &entry = bleResults[index];
+      json += F("{\"address\":\"");
+      json += jsonEscape(entry.address);
+      json += F("\",\"name\":\"");
+      json += jsonEscape(entry.name);
+      json += F("\",\"serviceUuid\":\"");
+      json += jsonEscape(entry.serviceUuid);
+      json += F("\",\"rssi\":");
+      json += String(entry.rssi);
+      json += F(",\"hasTxPower\":");
+      json += entry.hasTxPower ? F("true") : F("false");
+      json += F(",\"txPower\":");
+      json += String(entry.txPower);
+      json += F(",\"connectable\":");
+      json += entry.connectable ? F("true") : F("false");
+      json += F(",\"scannable\":");
+      json += entry.scannable ? F("true") : F("false");
+      json += F(",\"legacy\":");
+      json += entry.legacy ? F("true") : F("false");
+      json += F(",\"addressType\":\"");
+      json += bleAddressTypeLabel(entry.addressType);
+      json += F("\"}");
+    }
+
+    xSemaphoreGive(bleScanMutex);
+  }
+
+  json += F("]}");
+  return json;
+}
+
+String buildDeviceJson() {
+  String json;
+  json.reserve(1024);
+
+  json += F("{\"chipModel\":\"");
+  json += jsonEscape(String(ESP.getChipModel()));
+  json += F("\",\"chipRevision\":");
+  json += String(ESP.getChipRevision());
+  json += F(",\"chipCores\":");
+  json += String(ESP.getChipCores());
+  json += F(",\"sdkVersion\":\"");
+  json += jsonEscape(String(ESP.getSdkVersion()));
+  json += F("\",\"cpuFreqMHz\":");
+  json += String(ESP.getCpuFreqMHz());
+  json += F(",\"uptimeMs\":");
+  json += String(millis());
+  json += F(",\"temperatureC\":");
+  json += floatToJson(temperatureRead());
+  json += F(",\"heapSize\":");
+  json += String(ESP.getHeapSize());
+  json += F(",\"freeHeap\":");
+  json += String(ESP.getFreeHeap());
+  json += F(",\"minFreeHeap\":");
+  json += String(ESP.getMinFreeHeap());
+  json += F(",\"psramSize\":");
+  json += String(ESP.getPsramSize());
+  json += F(",\"flashChipSize\":");
+  json += String(ESP.getFlashChipSize());
+  json += F(",\"sketchSize\":");
+  json += String(ESP.getSketchSize());
+  json += F(",\"freeSketchSpace\":");
+  json += String(ESP.getFreeSketchSpace());
+  json += F(",\"efuseMac\":\"");
+  json += formatMacAddress(ESP.getEfuseMac());
+  json += F("\",\"wifiConnected\":");
+  json += WiFi.status() == WL_CONNECTED ? F("true") : F("false");
+  json += F(",\"wifiRssi\":");
+  if (WiFi.status() == WL_CONNECTED) {
+    json += String(WiFi.RSSI());
+  } else {
+    json += F("null");
+  }
+  json += F(",\"ip\":\"");
+  json += jsonEscape(currentIpString());
+  json += F("\",\"bleReady\":");
+  json += bleReady ? F("true") : F("false");
+  json += F(",\"bleStack\":\"");
+  json += bleReady ? jsonEscape(BLEDevice::getBLEStackString()) : String("unavailable");
+  json += F("\"}");
+
+  return json;
+}
+
 void sendJson(int statusCode, const String &body) {
   webServer.sendHeader(F("Cache-Control"), F("no-store"));
   webServer.send(statusCode, F("application/json; charset=utf-8"), body);
@@ -520,6 +756,14 @@ void handleState() {
   sendJson(200, buildStateJson());
 }
 
+void handleBluetoothState() {
+  sendJson(200, buildBluetoothJson());
+}
+
+void handleDeviceState() {
+  sendJson(200, buildDeviceJson());
+}
+
 void handlePatternChange() {
   String patternId;
   if (webServer.hasArg(F("plain"))) {
@@ -561,6 +805,36 @@ void handleMorseChange() {
   sendJson(200, buildStateJson());
 }
 
+bool startBleScan() {
+  if (!bleReady || bleScan == nullptr) {
+    setBleScanStatus(false, F("Bluetooth scanner unavailable."));
+    return false;
+  }
+
+  if (bleScan->isScanning()) {
+    return true;
+  }
+
+  setBleScanStatus(true, String(""));
+  bleScan->clearResults();
+
+  if (!bleScan->start(kBleScanDurationSeconds, handleBleScanComplete, false)) {
+    setBleScanStatus(false, F("Failed to start Bluetooth scan."));
+    return false;
+  }
+
+  return true;
+}
+
+void handleBluetoothScan() {
+  if (!startBleScan()) {
+    sendJsonError(500, bleScanError.isEmpty() ? String(F("Unable to start Bluetooth scan.")) : bleScanError);
+    return;
+  }
+
+  sendJson(200, buildBluetoothJson());
+}
+
 void handleNotFound() {
   sendJsonError(404, F("Not found."));
 }
@@ -570,6 +844,9 @@ void configureHttpServer() {
   webServer.on(F("/api/state"), HTTP_GET, handleState);
   webServer.on(F("/api/pattern"), HTTP_POST, handlePatternChange);
   webServer.on(F("/api/morse"), HTTP_POST, handleMorseChange);
+  webServer.on(F("/api/bluetooth"), HTTP_GET, handleBluetoothState);
+  webServer.on(F("/api/bluetooth/scan"), HTTP_POST, handleBluetoothScan);
+  webServer.on(F("/api/device"), HTTP_GET, handleDeviceState);
   webServer.onNotFound(handleNotFound);
 }
 
@@ -736,6 +1013,34 @@ void enableBoardWifiHardware() {
 #endif
 }
 
+void initializeBluetoothScanner() {
+  bleScanMutex = xSemaphoreCreateMutex();
+  if (bleScanMutex == nullptr) {
+    bleScanError = F("Failed to allocate Bluetooth scan mutex.");
+    return;
+  }
+
+  if (!BLEDevice::init("XIAO Device Console")) {
+    bleScanError = F("BLE init failed.");
+    return;
+  }
+
+  bleScan = BLEDevice::getScan();
+  if (bleScan == nullptr) {
+    bleScanError = F("BLE scanner unavailable.");
+    return;
+  }
+
+  bleScan->setActiveScan(true);
+  bleScan->setInterval(120);
+  bleScan->setWindow(80);
+#if defined(CONFIG_NIMBLE_ENABLED)
+  bleScan->setDuplicateFilter(true);
+#endif
+  bleReady = true;
+  bleScanError = String("");
+}
+
 }  // namespace
 
 void setup() {
@@ -745,6 +1050,7 @@ void setup() {
   pinMode(kLedPin, OUTPUT);
   setLedBrightness(0);
   enableBoardWifiHardware();
+  initializeBluetoothScanner();
 
   preferences.begin(kPreferenceNamespace, false);
   loadSavedPattern();

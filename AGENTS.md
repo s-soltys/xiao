@@ -8,6 +8,7 @@ This repo contains firmware for a Seeed Studio XIAO ESP32-C6 that:
 - advertises itself as `xiao.local`
 - serves a web UI from the device
 - exposes HTTP endpoints for LED pattern control
+- supports a custom Morse-code text mode
 - stores the selected pattern in NVS (`Preferences`)
 
 ## Current Architecture
@@ -44,7 +45,9 @@ Preferred commands:
 ## Behavior Contracts
 
 - The active pattern must switch immediately on `POST /api/pattern`.
+- The custom Morse text must switch immediately on `POST /api/morse`.
 - The active pattern must persist across reboot/power cycle.
+- The custom Morse text must persist when Morse mode is active.
 - The device should only become reachable at `xiao.local` after a successful Wi-Fi STA connection.
 - The LED loop must stay non-blocking so HTTP handling and Wi-Fi retries continue to work.
 - The browser depends on CDN-hosted React, ReactDOM, Tailwind, and Babel. The device serves only the HTML shell.
@@ -52,8 +55,9 @@ Preferred commands:
 ## API Contract
 
 - `GET /`: returns the HTML UI
-- `GET /api/state`: returns hostname, Wi-Fi state, IP, selected pattern, and pattern list
+- `GET /api/state`: returns hostname, Wi-Fi state, IP, selected pattern label/id, pattern list, and current Morse text
 - `POST /api/pattern`: accepts JSON body with `"id"` and persists the new pattern
+- `POST /api/morse`: accepts JSON body with `"text"` and persists the active Morse message
 
 Avoid changing these routes or the response shape unless the README is updated too.
 
@@ -63,6 +67,7 @@ Avoid changing these routes or the response shape unless the README is updated t
 
 - namespace: `xiao-app`
 - key: `pattern`
+- key: `morseText`
 
 If you rename the namespace or key, treat it as a migration-sensitive change.
 
@@ -80,6 +85,7 @@ If you rename the namespace or key, treat it as a migration-sensitive change.
 - Prefer small, local changes over introducing new libraries
 - If adding frontend behavior, keep it embedded in `web_app.h` unless there is a strong reason to add an asset pipeline
 - If changing pattern timing or adding patterns, keep the pattern table and API/state output in sync
+- If changing Morse support, keep the accepted character set, UI hint text, and request validation in sync
 
 ## Verification Expectations
 
@@ -96,3 +102,4 @@ After firmware changes, at minimum:
 - The UI needs browser internet access because frontend assets are CDN-hosted
 - There is no fallback AP for recovery
 - The JSON parser for `POST /api/pattern` is intentionally minimal and assumes a simple request body
+- The JSON parser for `POST /api/morse` is also intentionally minimal; avoid introducing quote-heavy or deeply nested payload shapes without replacing the parser

@@ -58,6 +58,7 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
         const [loading, setLoading] = useState(true);
         const [busyId, setBusyId] = useState('');
         const [error, setError] = useState('');
+        const [morseInput, setMorseInput] = useState('');
 
         async function fetchState() {
           setLoading(true);
@@ -70,10 +71,39 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
             }
             const payload = await response.json();
             setState(payload);
+            setMorseInput(payload.morseText || '');
           } catch (fetchError) {
             setError(fetchError.message || 'Unable to load device state.');
           } finally {
             setLoading(false);
+          }
+        }
+
+        async function activateMorse(event) {
+          event.preventDefault();
+          setBusyId('morse-text');
+          setError('');
+
+          try {
+            const response = await fetch('/api/morse', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ text: morseInput }),
+            });
+
+            const payload = await response.json();
+            if (!response.ok) {
+              throw new Error(payload.error || `Morse update failed with ${response.status}`);
+            }
+
+            setState(payload);
+            setMorseInput(payload.morseText || '');
+          } catch (requestError) {
+            setError(requestError.message || 'Unable to update the Morse pattern.');
+          } finally {
+            setBusyId('');
           }
         }
 
@@ -157,11 +187,16 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                       Active Pattern
                     </div>
                     <div className="mt-2 text-2xl font-bold sm:text-3xl">
-                      {state?.patterns?.find((pattern) => pattern.id === state?.selectedPatternId)?.label || 'Unknown'}
+                      {state?.selectedPatternLabel || 'Unknown'}
                     </div>
                     <div className="mt-2 text-sm text-slate-300">
                       Hostname: <span className="font-semibold text-white">{state?.hostname || 'xiao.local'}</span>
                     </div>
+                    {state?.selectedPatternId === 'morse-text' && state?.morseText ? (
+                      <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                        Message: <span className="font-semibold text-white">{state.morseText}</span>
+                      </div>
+                    ) : null}
                   </div>
 
                   <button
@@ -178,6 +213,39 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                     {error}
                   </div>
                 ) : null}
+
+                <section className="grid gap-4 rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm lg:grid-cols-[1.3fr_auto] lg:items-end">
+                  <form className="grid gap-3" onSubmit={activateMorse}>
+                    <div>
+                      <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">
+                        Custom Morse
+                      </div>
+                      <h2 className="mt-2 text-2xl font-bold text-slate-900">Type a message to blink in Morse code</h2>
+                      <p className="mt-2 text-sm text-slate-600">
+                        Supported characters: letters, digits, spaces, and <span className="font-medium">. , ? ! - / @ ( )</span>.
+                      </p>
+                    </div>
+
+                    <input
+                      type="text"
+                      value={morseInput}
+                      onChange={(event) => setMorseInput(event.target.value)}
+                      maxLength={64}
+                      placeholder="HELLO XIAO"
+                      disabled={Boolean(busyId)}
+                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 disabled:opacity-60"
+                    />
+                  </form>
+
+                  <button
+                    type="button"
+                    onClick={(event) => activateMorse(event)}
+                    disabled={Boolean(busyId)}
+                    className="inline-flex min-h-[52px] items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {busyId === 'morse-text' ? 'Saving Morse…' : 'Blink Morse'}
+                  </button>
+                </section>
 
                 <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                   {state?.patterns?.map((pattern, index) => {

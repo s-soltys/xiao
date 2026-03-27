@@ -6,6 +6,7 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - a React frontend loaded from CDN
 - Tailwind styling loaded from CDN
 - 10 selectable LED patterns
+- a custom Morse-code message mode
 - pattern persistence across power cycles
 - automatic Wi-Fi station startup on boot
 - local discovery at `http://xiao.local/` after Wi-Fi connects
@@ -22,6 +23,7 @@ On boot, the firmware:
 - keeps the LED pattern running in a non-blocking loop
 
 The web app lets you switch patterns instantly. The selected pattern is saved and restored after reset or power loss.
+It also lets you type a custom message that the LED will replay in Morse code. That custom text is stored too.
 
 ## Project Layout
 
@@ -106,6 +108,8 @@ Returns current device state:
   "ssid": "your-ssid",
   "ip": "192.168.1.10",
   "selectedPatternId": "breathing",
+  "selectedPatternLabel": "Breathing",
+  "morseText": "HELLO XIAO",
   "patterns": [
     { "id": "breathing", "label": "Breathing" }
   ]
@@ -126,6 +130,22 @@ Effect:
 - stores the new pattern in NVS
 - returns the updated state JSON
 
+### `POST /api/morse`
+
+Request body:
+
+```json
+{ "text": "HELLO XIAO" }
+```
+
+Effect:
+
+- normalizes the supported characters
+- converts the text into a looping Morse sequence
+- switches the LED immediately into Morse playback
+- stores both the active mode and the normalized text in NVS
+- returns the updated state JSON
+
 ## Available Patterns
 
 The firmware exposes these 10 patterns:
@@ -141,10 +161,17 @@ The firmware exposes these 10 patterns:
 9. `ramp-pulse`
 10. `strobe`
 
+In addition, the web UI supports a custom `morse-text` mode that is activated by submitting text through the Morse input field.
+
 The active pattern is persisted in:
 
 - namespace: `xiao-app`
 - key: `pattern`
+
+The custom Morse text is persisted in:
+
+- namespace: `xiao-app`
+- key: `morseText`
 
 ## Implementation Notes
 
@@ -154,6 +181,7 @@ The active pattern is persisted in:
 - Wi-Fi is STA-only.
 - mDNS is started only after Wi-Fi connects.
 - The hostname shown and advertised is `xiao.local`.
+- Morse input supports letters, digits, spaces, and `. , ? ! - / @ ( )`.
 
 ## Troubleshooting
 

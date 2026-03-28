@@ -170,6 +170,16 @@ const MatrixPatternDefinition kMatrixPatterns[] = {
   {"pulse", "Color Pulse", true},
   {"checker", "Checker Flip", true},
   {"sparkle", "Sparkle", true},
+  {"plasma", "Plasma Drift", true},
+  {"prism", "Prism Stripes", true},
+  {"ripple", "Neon Ripple", true},
+  {"meteor", "Meteor Trail", true},
+  {"pinwheel", "Pinwheel", true},
+  {"aurora", "Aurora Veil", true},
+  {"confetti", "Confetti Burst", true},
+  {"static", "Rainbow Static", true},
+  {"glitch", "Glitch Blocks", true},
+  {"lava", "Lava Lamp", true},
 };
 
 WebServer webServer(kHttpPort);
@@ -228,6 +238,15 @@ RgbColor scaleColor(const RgbColor &color, uint8_t scale) {
   };
 }
 
+RgbColor blendColors(const RgbColor &first, const RgbColor &second, uint8_t secondWeight) {
+  const uint16_t firstWeight = 255 - secondWeight;
+  return {
+    static_cast<uint8_t>((static_cast<uint16_t>(first.red) * firstWeight + static_cast<uint16_t>(second.red) * secondWeight) / 255),
+    static_cast<uint8_t>((static_cast<uint16_t>(first.green) * firstWeight + static_cast<uint16_t>(second.green) * secondWeight) / 255),
+    static_cast<uint8_t>((static_cast<uint16_t>(first.blue) * firstWeight + static_cast<uint16_t>(second.blue) * secondWeight) / 255),
+  };
+}
+
 RgbColor colorWheel(uint8_t position) {
   position = 255 - position;
   if (position < 85) {
@@ -249,6 +268,11 @@ uint32_t hash32(uint32_t value) {
   value *= 0x846ca68bUL;
   value ^= value >> 16;
   return value;
+}
+
+uint8_t sine8(float radians) {
+  const float normalized = 0.5f + (0.5f * sinf(radians));
+  return static_cast<uint8_t>(normalized * 255.0f + 0.5f);
 }
 
 size_t matrixPixelIndex(uint8_t row, uint8_t column) {
@@ -278,6 +302,25 @@ void setMatrixPixel(uint8_t row, uint8_t column, const RgbColor &color) {
   }
 
   matrixFrame[matrixPixelIndex(row, column)] = color;
+}
+
+void setMatrixLinearPixel(size_t index, const RgbColor &color) {
+  if (index >= kMatrixLedCount) {
+    return;
+  }
+
+  matrixFrame[index] = color;
+}
+
+RgbColor warmColor(uint8_t heat) {
+  const RgbColor deepRed = makeColor(96, 0, 0);
+  const RgbColor orange = makeColor(255, 72, 0);
+  const RgbColor yellow = makeColor(255, 210, 24);
+  if (heat < 128) {
+    return blendColors(deepRed, orange, static_cast<uint8_t>(heat * 2));
+  }
+
+  return blendColors(orange, yellow, static_cast<uint8_t>((heat - 128) * 2));
 }
 
 void writeMatrixFrame() {
@@ -914,6 +957,160 @@ void renderMatrixSparkle(uint32_t now) {
   }
 }
 
+void renderMatrixPlasma(uint32_t now) {
+  const float phase = static_cast<float>(now) / 340.0f;
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float wave = sinf(column * 0.85f + phase) + sinf(row * 1.10f - phase * 1.25f) + sinf((column + row) * 0.55f + phase * 0.70f);
+      const float normalized = (wave + 3.0f) / 6.0f;
+      const uint8_t hue = static_cast<uint8_t>(normalized * 255.0f + row * 13U + column * 7U);
+      setMatrixPixel(row, column, blendColors(scaleColor(matrixBaseColor, 48), colorWheel(hue), 196));
+    }
+  }
+}
+
+void renderMatrixPrism(uint32_t now) {
+  const float phase = static_cast<float>(now) / 260.0f;
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const uint8_t stripe = sine8(column * 1.05f - row * 0.70f + phase);
+      const uint8_t hue = static_cast<uint8_t>((now / 20U) + column * 26U + row * 18U);
+      setMatrixPixel(row, column, blendColors(scaleColor(matrixBaseColor, 26), colorWheel(hue), stripe));
+    }
+  }
+}
+
+void renderMatrixRipple(uint32_t now) {
+  const float centerX = (kMatrixColumns - 1) * 0.5f;
+  const float centerY = (kMatrixRows - 1) * 0.5f;
+  const float phase = static_cast<float>(now) / 150.0f;
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float deltaX = column - centerX;
+      const float deltaY = row - centerY;
+      const float distance = sqrtf(deltaX * deltaX + deltaY * deltaY);
+      const uint8_t wave = sine8(distance * 2.8f - phase);
+      const uint8_t hue = static_cast<uint8_t>((now / 14U) + distance * 34.0f);
+      setMatrixPixel(row, column, blendColors(scaleColor(matrixBaseColor, 14), colorWheel(hue), wave));
+    }
+  }
+}
+
+void renderMatrixMeteor(uint32_t now) {
+  fillMatrixFrame(scaleColor(matrixBaseColor, 8));
+
+  const size_t headBase = static_cast<size_t>(now / 55U);
+  for (uint8_t meteorIndex = 0; meteorIndex < 3; ++meteorIndex) {
+    const size_t head = (headBase + meteorIndex * (kMatrixLedCount / 3)) % kMatrixLedCount;
+    const RgbColor meteorColor = blendColors(matrixBaseColor, colorWheel(static_cast<uint8_t>(head * 5U + meteorIndex * 60U)), 132);
+
+    for (uint8_t tail = 0; tail < 12; ++tail) {
+      const size_t pixelIndex = (head + kMatrixLedCount - tail) % kMatrixLedCount;
+      const uint8_t intensity = static_cast<uint8_t>(255 - tail * 20U);
+      setMatrixLinearPixel(pixelIndex, scaleColor(meteorColor, intensity));
+    }
+  }
+}
+
+void renderMatrixPinwheel(uint32_t now) {
+  const float centerX = (kMatrixColumns - 1) * 0.5f;
+  const float centerY = (kMatrixRows - 1) * 0.5f;
+  const float phase = static_cast<float>(now) / 420.0f;
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float deltaX = column - centerX;
+      const float deltaY = row - centerY;
+      const float angle = atan2f(deltaY, deltaX);
+      const float radius = sqrtf(deltaX * deltaX + deltaY * deltaY);
+      const uint8_t hue = static_cast<uint8_t>(((angle + PI) / (2.0f * PI)) * 255.0f + (now / 10U) + radius * 20.0f);
+      const uint8_t pulse = static_cast<uint8_t>(96 + (sine8(radius * 2.2f - phase * 3.0f) / 2U));
+      setMatrixPixel(row, column, scaleColor(colorWheel(hue), pulse));
+    }
+  }
+}
+
+void renderMatrixAurora(uint32_t now) {
+  const float phase = static_cast<float>(now) / 520.0f;
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float curtain = 0.5f + (0.5f * sinf(column * 0.45f + phase + sinf(row * 0.55f + phase)));
+      const float sweep = 0.5f + (0.5f * sinf(row * 0.90f - phase * 1.80f));
+      const uint8_t hue = static_cast<uint8_t>((now / 22U) + column * 17U + row * 11U);
+      const uint8_t colorMix = static_cast<uint8_t>(80 + curtain * 120.0f);
+      const uint8_t intensity = static_cast<uint8_t>(28 + curtain * 110.0f + sweep * 80.0f);
+      setMatrixPixel(row, column, scaleColor(blendColors(matrixBaseColor, colorWheel(hue), colorMix), intensity));
+    }
+  }
+}
+
+void renderMatrixConfetti(uint32_t now) {
+  const uint32_t tick = now / 85U;
+  const RgbColor background = scaleColor(matrixBaseColor, 10);
+
+  for (size_t index = 0; index < kMatrixLedCount; ++index) {
+    const uint32_t noise = hash32(tick * 313U + index * 101U);
+    const uint8_t selector = static_cast<uint8_t>(noise & 0xFFU);
+    if (selector > 242) {
+      setMatrixLinearPixel(index, colorWheel(static_cast<uint8_t>((noise >> 8) & 0xFFU)));
+    } else if (selector > 232) {
+      setMatrixLinearPixel(index, makeColor(255, 255, 255));
+    } else {
+      setMatrixLinearPixel(index, background);
+    }
+  }
+}
+
+void renderMatrixStatic(uint32_t now) {
+  const uint32_t tick = now / 45U;
+
+  for (size_t index = 0; index < kMatrixLedCount; ++index) {
+    const uint32_t noise = hash32(tick * 911U + index * 137U);
+    const uint8_t hue = static_cast<uint8_t>(noise & 0xFFU);
+    const uint8_t intensity = static_cast<uint8_t>(40 + ((noise >> 8) & 0xD7U));
+    setMatrixLinearPixel(index, scaleColor(colorWheel(hue), intensity));
+  }
+}
+
+void renderMatrixGlitch(uint32_t now) {
+  const uint32_t tick = now / 120U;
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    const uint32_t rowNoise = hash32(tick * 173U + row * 971U);
+    const uint8_t rowShift = static_cast<uint8_t>(rowNoise % kMatrixColumns);
+
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const uint32_t blockNoise = hash32(rowNoise + ((column + rowShift) / 2U) * 37U);
+      const uint8_t selector = static_cast<uint8_t>(blockNoise & 0x0FU);
+      if (selector == 0) {
+        setMatrixPixel(row, column, makeColor(255, 255, 255));
+      } else if (selector <= 2) {
+        setMatrixPixel(row, column, makeColor(0, 0, 0));
+      } else {
+        const uint8_t hue = static_cast<uint8_t>((blockNoise >> 8) & 0xFFU);
+        const uint8_t intensity = static_cast<uint8_t>(120 + ((blockNoise >> 16) & 0x7FU));
+        setMatrixPixel(row, column, scaleColor(colorWheel(hue), intensity));
+      }
+    }
+  }
+}
+
+void renderMatrixLava(uint32_t now) {
+  const float phase = static_cast<float>(now) / 380.0f;
+  const uint32_t tick = now / 160U;
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float wave = sinf(column * 0.70f + phase) + sinf(row * 1.20f - phase * 1.35f) + sinf((column - row) * 0.90f + phase * 0.55f);
+      const uint8_t flicker = static_cast<uint8_t>(hash32(tick * 131U + row * 17U + column * 29U) & 0x3FU);
+      const int heat = static_cast<int>(((wave + 3.0f) / 6.0f) * 200.0f) + flicker;
+      setMatrixPixel(row, column, warmColor(constrain(heat, 0, 255)));
+    }
+  }
+}
+
 void renderMatrixFrame(uint32_t now) {
   if (activeMatrixPattern == nullptr) {
     renderMatrixOff();
@@ -936,6 +1133,26 @@ void renderMatrixFrame(uint32_t now) {
     renderMatrixChecker(now);
   } else if (strcmp(activeMatrixPattern->id, "sparkle") == 0) {
     renderMatrixSparkle(now);
+  } else if (strcmp(activeMatrixPattern->id, "plasma") == 0) {
+    renderMatrixPlasma(now);
+  } else if (strcmp(activeMatrixPattern->id, "prism") == 0) {
+    renderMatrixPrism(now);
+  } else if (strcmp(activeMatrixPattern->id, "ripple") == 0) {
+    renderMatrixRipple(now);
+  } else if (strcmp(activeMatrixPattern->id, "meteor") == 0) {
+    renderMatrixMeteor(now);
+  } else if (strcmp(activeMatrixPattern->id, "pinwheel") == 0) {
+    renderMatrixPinwheel(now);
+  } else if (strcmp(activeMatrixPattern->id, "aurora") == 0) {
+    renderMatrixAurora(now);
+  } else if (strcmp(activeMatrixPattern->id, "confetti") == 0) {
+    renderMatrixConfetti(now);
+  } else if (strcmp(activeMatrixPattern->id, "static") == 0) {
+    renderMatrixStatic(now);
+  } else if (strcmp(activeMatrixPattern->id, "glitch") == 0) {
+    renderMatrixGlitch(now);
+  } else if (strcmp(activeMatrixPattern->id, "lava") == 0) {
+    renderMatrixLava(now);
   } else {
     renderMatrixOff();
   }

@@ -9,7 +9,7 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - 10 selectable LED patterns
 - a custom Morse-code message mode
 - a 6x10 WS2812B RGB matrix controller on `A0 / D0 / GPIO 0`
-- 8 selectable RGB matrix effects
+- 18 selectable RGB matrix effects
 - a BLE scanner
 - a device-status app with internal temperature and system telemetry
 - pattern persistence across power cycles
@@ -282,6 +282,16 @@ The matrix app exposes these effects for the 6x10 WS2812B panel:
 6. `pulse`
 7. `checker`
 8. `sparkle`
+9. `plasma`
+10. `prism`
+11. `ripple`
+12. `meteor`
+13. `pinwheel`
+14. `aurora`
+15. `confetti`
+16. `static`
+17. `glitch`
+18. `lava`
 
 The active pattern is persisted in:
 
@@ -304,7 +314,7 @@ The RGB matrix settings are persisted in:
 
 - The onboard LED is driven as active-low.
 - The onboard LED engine is non-blocking and uses `millis()`.
-- The RGB matrix uses the ESP32 Arduino core `RMT` driver and a serpentine 6x10 mapping.
+- The RGB matrix uses `Adafruit NeoPixel` with a serpentine 6x10 mapping.
 - The web app is embedded in flash via PROGMEM; there is no SPIFFS or LittleFS dependency.
 - Wi-Fi is STA-only.
 - mDNS is started only after Wi-Fi connects.

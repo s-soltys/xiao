@@ -8,7 +8,7 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - a multi-app layout with Mood, Message, RGB Matrix, Bluetooth, and Device Info sections
 - a solid onboard status LED while the device is powered
 - a 6x10 WS2812B RGB matrix controller on `A0 / D0 / GPIO 0`
-- 40 selectable RGB matrix effects including mood icons and scrolling text
+- 41 selectable RGB matrix effects including mood icons and scrolling text
 - a BLE scanner
 - a device-status app with internal temperature and system telemetry
 - matrix effect, brightness, base color, mood, and message persistence across power cycles
@@ -374,8 +374,9 @@ The matrix app exposes these effects for the 6x10 WS2812B panel:
 36. `diagonal-wipe`
 37. `spiral-trace`
 38. `border-fill`
-39. `mood`
-40. `message`
+39. `rain-drops`
+40. `mood`
+41. `message`
 
 The Mood app ships with these 10 saved mood ids:
 
@@ -415,8 +416,8 @@ The RGB matrix settings are persisted in:
 ## Implementation Notes
 
 - The onboard LED is driven as active-low.
-- The onboard LED engine is non-blocking and uses `millis()`.
-- The RGB matrix uses `Adafruit NeoPixel` with a serpentine 6x10 mapping.
+- The onboard LED is used as a solid power indicator; it is not exposed as a blinking app in the current UI.
+- The RGB matrix uses `Adafruit NeoPixel` on a logical 6x10 grid with selectable column-based wiring maps.
 - The web app is embedded in flash via PROGMEM; there is no SPIFFS or LittleFS dependency.
 - Wi-Fi is STA-only.
 - mDNS is started only after Wi-Fi connects.
@@ -426,6 +427,16 @@ The RGB matrix settings are persisted in:
 - The matrix firmware assumes the WS2812B data input is wired to `A0 / D0 / GPIO 0`.
 - BLE scanning is BLE-only, not classic Bluetooth discovery.
 - The default partition scheme is too small; use `PartitionScheme=huge_app`.
+
+## Lessons From This Session
+
+- This hardware setup currently works with column-based mapping profiles only. The default mapping is `cols-bl`.
+- Matrix rendering should always happen in logical `row` and `column` space. Direct writes by raw LED index can bypass the selected mapping and make some effects look correct while others are skewed.
+- If a matrix change affects layout, validate multiple modes, not just one. Mood icons, message glyphs, previews, and animated effects should all respect the same mapping.
+- On a 6x10 panel, mood icons work better as sparse single-color expressions than as full outlined or multicolor emoji faces.
+- Compact message glyphs need to be tuned for this panel. Punctuation, especially `-`, should be checked visually because wider symbols may need special handling.
+- The message app currently scrolls right-to-left, and that direction should stay in sync between firmware behavior, API metadata, and UI copy.
+- Structured effects such as `pixel-spectrum`, `raster-trace`, `zigzag-trace`, `row-fill`, and `column-fill` are the best first-pass tools for checking whether the physical layout is mapped correctly.
 
 ## Troubleshooting
 
@@ -445,6 +456,12 @@ If the RGB matrix does not light:
 - confirm the panel data input is wired to `A0 / D0 / GPIO 0`
 - confirm the panel has suitable power and shared ground
 - open the `RGB Matrix` app and verify `/api/matrix` reports `available: true`
+
+If matrix shapes look scrambled or some modes look correct while others do not:
+
+- confirm the selected mapping in the `RGB Matrix` app; `cols-bl` is the current default
+- test with structured effects such as `pixel-spectrum`, `zigzag-trace`, `row-fill`, and `column-fill`
+- treat any mode that only looks correct under one effect as a likely mapping/rendering bug rather than just bad artwork
 
 If upload fails:
 

@@ -122,6 +122,12 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
         if (appId === 'blink') {
           return 'Blink App';
         }
+        if (appId === 'mood') {
+          return 'Mood App';
+        }
+        if (appId === 'message') {
+          return 'Message App';
+        }
         if (appId === 'matrix') {
           return 'RGB Matrix';
         }
@@ -132,20 +138,26 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
       }
 
       function App() {
-        const [activeApp, setActiveApp] = useState('blink');
+        const [activeApp, setActiveApp] = useState('mood');
         const [blinkState, setBlinkState] = useState(null);
+        const [moodState, setMoodState] = useState(null);
+        const [messageState, setMessageState] = useState(null);
         const [matrixState, setMatrixState] = useState(null);
         const [bluetoothState, setBluetoothState] = useState(null);
         const [deviceState, setDeviceState] = useState(null);
         const [loading, setLoading] = useState(true);
         const [refreshing, setRefreshing] = useState(false);
         const [blinkBusyId, setBlinkBusyId] = useState('');
+        const [moodBusyId, setMoodBusyId] = useState('');
+        const [messageBusy, setMessageBusy] = useState(false);
         const [matrixBusy, setMatrixBusy] = useState(false);
         const [scanBusy, setScanBusy] = useState(false);
         const [error, setError] = useState('');
         const [morseInput, setMorseInput] = useState('');
+        const [messageInput, setMessageInput] = useState('');
         const [matrixColor, setMatrixColor] = useState('#22c55e');
         const [matrixBrightness, setMatrixBrightness] = useState('48');
+        const [matrixMapping, setMatrixMapping] = useState('cols-bl');
         const [matrixInputsReady, setMatrixInputsReady] = useState(false);
 
         async function fetchJson(url, options) {
@@ -164,12 +176,26 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
           return payload;
         }
 
+        async function fetchMoodState() {
+          const payload = await fetchJson('/api/mood', { cache: 'no-store' });
+          setMoodState(payload);
+          return payload;
+        }
+
+        async function fetchMessageState() {
+          const payload = await fetchJson('/api/message', { cache: 'no-store' });
+          setMessageState(payload);
+          setMessageInput(payload.text || '');
+          return payload;
+        }
+
         async function fetchMatrixState(syncInputs = false) {
           const payload = await fetchJson('/api/matrix', { cache: 'no-store' });
           setMatrixState(payload);
           if (syncInputs || !matrixInputsReady) {
             setMatrixColor(payload.color || '#22c55e');
             setMatrixBrightness(String(payload.brightness ?? 48));
+            setMatrixMapping(payload.mappingId || 'cols-bl');
             setMatrixInputsReady(true);
           }
           return payload;
@@ -194,14 +220,18 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
           setRefreshing(true);
           setError('');
 
-          const [blinkResult, matrixResult, bluetoothResult, deviceResult] = await Promise.allSettled([
+          const [blinkResult, moodResult, messageResult, matrixResult, bluetoothResult, deviceResult] = await Promise.allSettled([
             fetchBlinkState(),
+            fetchMoodState(),
+            fetchMessageState(),
             fetchMatrixState(true),
             fetchBluetoothState(),
             fetchDeviceState(),
           ]);
 
-          const firstError = [blinkResult, matrixResult, bluetoothResult, deviceResult].find((result) => result.status === 'rejected');
+          const firstError = [blinkResult, moodResult, messageResult, matrixResult, bluetoothResult, deviceResult].find(
+            (result) => result.status === 'rejected'
+          );
           if (firstError) {
             setError(firstError.reason?.message || 'Unable to refresh one or more apps.');
           }
@@ -241,7 +271,7 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
         }, [activeApp]);
 
         useEffect(() => {
-          if (activeApp !== 'matrix') {
+          if (activeApp !== 'matrix' && activeApp !== 'mood' && activeApp !== 'message') {
             return undefined;
           }
 
@@ -309,11 +339,58 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
             setMatrixState(payload);
             setMatrixColor(payload.color || '#22c55e');
             setMatrixBrightness(String(payload.brightness ?? 48));
+            setMatrixMapping(payload.mappingId || 'cols-bl');
             setMatrixInputsReady(true);
+            fetchMoodState().catch(() => {});
+            fetchMessageState().catch(() => {});
           } catch (requestError) {
             setError(requestError.message || 'Unable to update the RGB matrix.');
           } finally {
             setMatrixBusy(false);
+          }
+        }
+
+        async function activateMood(moodId) {
+          setMoodBusyId(moodId);
+          setError('');
+
+          try {
+            const payload = await fetchJson('/api/mood', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ id: moodId }),
+            });
+            setMoodState(payload);
+            await fetchMatrixState(false);
+          } catch (requestError) {
+            setError(requestError.message || 'Unable to update the mood icon.');
+          } finally {
+            setMoodBusyId('');
+          }
+        }
+
+        async function applyMessage(event) {
+          event.preventDefault();
+          setMessageBusy(true);
+          setError('');
+
+          try {
+            const payload = await fetchJson('/api/message', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ text: messageInput }),
+            });
+            setMessageState(payload);
+            setMessageInput(payload.text || '');
+            await fetchMatrixState(false);
+          } catch (requestError) {
+            setError(requestError.message || 'Unable to update the scrolling message.');
+          } finally {
+            setMessageBusy(false);
           }
         }
 
@@ -328,6 +405,7 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
           await updateMatrixSettings({
             color: matrixColor,
             brightness: Math.round(brightnessValue),
+            mappingId: matrixMapping,
           });
         }
 
@@ -378,8 +456,8 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                       XIAO Device Console
                     </h1>
                     <p className="mt-4 max-w-3xl text-base text-slate-600 sm:text-lg">
-                      Switch between Blink, RGB Matrix, Bluetooth Scanner, and Device Info. All four apps are served
-                      directly from the XIAO ESP32-C6.
+                      Switch between Mood, Message, RGB Matrix, Bluetooth Scanner, and Device Info. All five apps are
+                      served directly from the XIAO ESP32-C6.
                     </p>
                   </div>
 
@@ -402,13 +480,20 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                   </div>
                 </section>
 
-                <section className="grid gap-3 lg:grid-cols-4">
+                <section className="grid gap-3 lg:grid-cols-3 2xl:grid-cols-5">
                   <AppTab
-                    id="blink"
+                    id="mood"
                     activeApp={activeApp}
                     onSelect={setActiveApp}
-                    label="Blink App"
-                    description="Preset onboard LED patterns plus custom Morse playback."
+                    label="Mood App"
+                    description="Show one handmade emoji-style mood icon on the RGB matrix."
+                  />
+                  <AppTab
+                    id="message"
+                    activeApp={activeApp}
+                    onSelect={setActiveApp}
+                    label="Message App"
+                    description="Send a message that loops right-to-left across the RGB matrix."
                   />
                   <AppTab
                     id="matrix"
@@ -455,83 +540,152 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                   </div>
                 ) : null}
 
-                {activeApp === 'blink' ? (
+                {activeApp === 'mood' ? (
                   <section className="grid gap-6">
                     <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-                      <div className="rounded-3xl border border-slate-200 bg-slate-950 px-5 py-4 text-white">
-                        <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">Active Pattern</div>
+                      <div className="rounded-3xl border border-slate-200 bg-slate-950 px-5 py-5 text-white">
+                        <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">Mood Display</div>
                         <div className="mt-2 text-2xl font-bold sm:text-3xl">
-                          {blinkState?.selectedPatternLabel || 'Unknown'}
+                          {moodState?.selectedMoodLabel || 'Loading mood'}
                         </div>
-                        {blinkState?.selectedPatternId === 'morse-text' && blinkState?.morseText ? (
-                          <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
-                            Message: <span className="font-semibold text-white">{blinkState.morseText}</span>
-                          </div>
-                        ) : null}
+                        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
+                          Shows a handmade emoji-style icon on the 6x10 WS2812B panel. These icons use their own fixed
+                          multicolor palette for readability.
+                        </p>
+                        <div className="mt-4 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-300">
+                          {moodState?.selectedPatternId === 'mood' ? 'Showing on matrix now' : 'Saved and ready'}
+                        </div>
                       </div>
 
-                      <form
-                        className="grid gap-3 rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm"
-                        onSubmit={activateMorse}
-                      >
+                      <div className="grid gap-3 rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm">
                         <div>
-                          <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Custom Morse</div>
-                          <h2 className="mt-2 text-2xl font-bold text-slate-900">Type a message to blink in Morse code</h2>
+                          <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Mood Notes</div>
+                          <h2 className="mt-2 text-2xl font-bold text-slate-900">Pick a face for the matrix</h2>
                           <p className="mt-2 text-sm text-slate-600">
-                            Supported characters: letters, digits, spaces, and <span className="font-medium">. , ? ! - / @ ( )</span>.
+                            Saving a mood switches the matrix immediately into Mood mode. Brightness is still controlled
+                            from the RGB Matrix tab.
                           </p>
                         </div>
 
-                        <input
-                          type="text"
-                          value={morseInput}
-                          onChange={(event) => setMorseInput(event.target.value)}
-                          maxLength={64}
-                          placeholder="HELLO XIAO"
-                          disabled={Boolean(blinkBusyId)}
-                          className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 disabled:opacity-60"
-                        />
-
-                        <button
-                          type="submit"
-                          disabled={Boolean(blinkBusyId)}
-                          className="inline-flex min-h-[52px] items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {blinkBusyId === 'morse-text' ? 'Saving Morse…' : 'Blink Morse'}
-                        </button>
-                      </form>
+                        <section className="grid gap-3 sm:grid-cols-2">
+                          <StatusCard
+                            label="Matrix Driver"
+                            value={moodState?.available ? 'Ready' : 'Unavailable'}
+                            tone={moodState?.available ? 'online' : 'offline'}
+                          />
+                          <StatusCard
+                            label="Brightness"
+                            value={`${matrixState?.brightness ?? 0}/255`}
+                            tone="neutral"
+                          />
+                        </section>
+                      </div>
                     </div>
 
                     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                      {blinkState?.patterns?.map((pattern, index) => {
-                        const isActive = pattern.id === blinkState.selectedPatternId;
-                        const isBusy = blinkBusyId === pattern.id;
+                      {moodState?.moods?.map((mood, index) => {
+                        const isSelected = mood.id === moodState.selectedMoodId;
+                        const isBusy = moodBusyId === mood.id;
 
                         return (
                           <button
-                            key={pattern.id}
+                            key={mood.id}
                             type="button"
-                            onClick={() => activatePattern(pattern.id)}
-                            disabled={Boolean(blinkBusyId)}
+                            onClick={() => activateMood(mood.id)}
+                            disabled={Boolean(moodBusyId) || !moodState?.available}
                             className={[
                               'group min-h-[132px] rounded-3xl border px-4 py-4 text-left transition duration-200',
                               'focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2',
-                              isActive
+                              isSelected
                                 ? 'border-slate-950 bg-slate-950 text-white shadow-panel'
                                 : 'border-white/70 bg-white/80 text-slate-900 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white',
-                              blinkBusyId && !isBusy ? 'opacity-60' : '',
+                              moodBusyId && !isBusy ? 'opacity-60' : '',
                             ].join(' ')}
                           >
                             <div className="text-[11px] font-medium uppercase tracking-[0.28em] opacity-70">
                               {String(index + 1).padStart(2, '0')}
                             </div>
-                            <div className="mt-4 text-xl font-bold">{pattern.label}</div>
-                            <div className={`mt-3 text-sm ${isActive ? 'text-teal-300' : 'text-slate-500'}`}>
-                              {isBusy ? 'Switching now…' : isActive ? 'Stored and running' : 'Tap to activate'}
+                            <div className="mt-4 text-xl font-bold">{mood.label}</div>
+                            <div className={`mt-3 text-sm ${isSelected ? 'text-teal-300' : 'text-slate-500'}`}>
+                              {isBusy ? 'Switching now…' : isSelected && moodState?.selectedPatternId === 'mood' ? 'Showing now' : isSelected ? 'Saved mood' : 'Tap to show'}
                             </div>
                           </button>
                         );
                       })}
+                    </section>
+                  </section>
+                ) : null}
+
+                {activeApp === 'message' ? (
+                  <section className="grid gap-6">
+                    <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+                      <div className="rounded-3xl border border-slate-200 bg-slate-950 px-5 py-5 text-white">
+                        <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">Scrolling Message</div>
+                        <div className="mt-2 text-2xl font-bold sm:text-3xl">
+                          {messageState?.text || 'No message saved'}
+                        </div>
+                        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
+                          The message enters from the right, moves across the matrix, exits on the left, and loops
+                          continuously using the current matrix base color.
+                        </p>
+                        <div className="mt-4 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-300">
+                          {messageState?.selectedPatternId === 'message' ? 'Looping on matrix now' : 'Saved and ready'}
+                        </div>
+                      </div>
+
+                      <form
+                        className="grid gap-4 rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm"
+                        onSubmit={applyMessage}
+                      >
+                        <div>
+                          <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Message Input</div>
+                          <h2 className="mt-2 text-2xl font-bold text-slate-900">Type a message for the matrix</h2>
+                          <p className="mt-2 text-sm text-slate-600">
+                            Supported characters: <span className="font-medium">{messageState?.supportedCharacters || 'A-Z, 0-9, space, . , ! ? -'}</span>.
+                          </p>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={messageInput}
+                          onChange={(event) => setMessageInput(event.target.value)}
+                          maxLength={messageState?.maxLength || 64}
+                          placeholder="HELLO XIAO"
+                          disabled={messageBusy || !messageState?.available}
+                          className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 disabled:opacity-60"
+                        />
+
+                        <button
+                          type="submit"
+                          disabled={messageBusy || !messageState?.available}
+                          className="inline-flex min-h-[52px] items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {messageBusy ? 'Saving Message…' : 'Show Message'}
+                        </button>
+                      </form>
+                    </div>
+
+                    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                      <StatusCard
+                        label="Scroll"
+                        value={messageState?.scrollDirection === 'right-to-left' ? 'Right to Left' : '—'}
+                        tone="neutral"
+                      />
+                      <StatusCard
+                        label="Max Length"
+                        value={messageState?.maxLength || 64}
+                        tone="neutral"
+                      />
+                      <StatusCard
+                        label="Base Color"
+                        value={matrixState?.color || '#22c55e'}
+                        tone="neutral"
+                      />
+                      <StatusCard
+                        label="Brightness"
+                        value={`${matrixState?.brightness ?? 0}/255`}
+                        tone="neutral"
+                      />
                     </section>
                   </section>
                 ) : null}
@@ -563,9 +717,10 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                       >
                         <div>
                           <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Panel Controls</div>
-                          <h2 className="mt-2 text-2xl font-bold text-slate-900">Color and brightness</h2>
+                          <h2 className="mt-2 text-2xl font-bold text-slate-900">Color, brightness, and mapping</h2>
                           <p className="mt-2 text-sm text-slate-600">
-                            Pick a base color for the effect palette and tune output intensity from 0 to 255.
+                            Pick a base color, tune output intensity, and change the matrix wiring map if text or
+                            faces look scrambled on the panel.
                           </p>
                         </div>
 
@@ -596,6 +751,22 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                           </div>
                         </div>
 
+                        <div className="grid gap-2">
+                          <label className="text-[11px] font-medium uppercase tracking-[0.24em] text-slate-500">Pixel Mapping</label>
+                          <select
+                            value={matrixMapping}
+                            onChange={(event) => setMatrixMapping(event.target.value)}
+                            disabled={matrixBusy || !matrixState?.available}
+                            className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200 disabled:opacity-60"
+                          >
+                            {(matrixState?.mappings || []).map((mapping) => (
+                              <option key={mapping.id} value={mapping.id}>
+                                {mapping.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
                         <button
                           type="submit"
                           disabled={matrixBusy || !matrixState?.available}
@@ -620,6 +791,11 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                       <StatusCard
                         label="Base Color"
                         value={matrixState?.color || '#22c55e'}
+                        tone="neutral"
+                      />
+                      <StatusCard
+                        label="Mapping"
+                        value={matrixState?.mappingLabel || 'Loading'}
                         tone="neutral"
                       />
                       <StatusCard
@@ -685,7 +861,8 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                           <h2 className="mt-2 text-2xl font-bold text-slate-900">Panel input</h2>
                           <p className="mt-3 text-sm leading-6 text-slate-600">
                             This firmware assumes the matrix data input is connected to <span className="font-medium text-slate-900">A0 / D0 / GPIO 0</span>.
-                            If the panel looks mirrored or snakes the wrong way, the firmware mapping can be adjusted later.
+                            If the panel looks mirrored, rotated, or snakes the wrong way, use the mapping selector
+                            above before changing the firmware again.
                           </p>
                         </div>
                       </div>

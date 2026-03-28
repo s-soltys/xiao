@@ -5,15 +5,13 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - a web app served directly from the device
 - a React frontend loaded from CDN
 - Tailwind styling loaded from CDN
-- a multi-app layout with Blink, RGB Matrix, Bluetooth, and Device Info sections
-- 10 selectable LED patterns
-- a custom Morse-code message mode
+- a multi-app layout with Mood, Message, RGB Matrix, Bluetooth, and Device Info sections
+- a solid onboard status LED while the device is powered
 - a 6x10 WS2812B RGB matrix controller on `A0 / D0 / GPIO 0`
-- 28 selectable RGB matrix effects
+- 30 selectable RGB matrix effects including mood icons and scrolling text
 - a BLE scanner
 - a device-status app with internal temperature and system telemetry
-- pattern persistence across power cycles
-- matrix effect, brightness, and base-color persistence across power cycles
+- matrix effect, brightness, base color, mood, and message persistence across power cycles
 - automatic Wi-Fi station startup on boot
 - local discovery at `http://xiao.local/` after Wi-Fi connects
 
@@ -23,17 +21,17 @@ On boot, the firmware:
 
 - enables the XIAO ESP32-C6 Wi-Fi hardware
 - initializes the BLE scanner
-- loads the last selected LED pattern from NVS (`Preferences`)
-- loads the saved RGB matrix effect, brightness, and base color
+- turns the onboard LED on as a power indicator
+- loads the saved RGB matrix effect, brightness, base color, mood, and message
 - initializes the WS2812B matrix driver on `A0 / D0 / GPIO 0`
 - starts Wi-Fi in station mode using `wifi_config.h`
 - starts an HTTP server on port `80` after Wi-Fi connects
 - starts mDNS and advertises the device as `xiao.local`
-- keeps both the onboard LED pattern and the RGB matrix running in a non-blocking loop
+- keeps the RGB matrix running in a non-blocking loop while the onboard LED stays on
 
-The web app lets you switch patterns instantly. The selected pattern is saved and restored after reset or power loss.
-It also lets you type a custom message that the LED will replay in Morse code. That custom text is stored too.
-The matrix app lets you switch RGB panel effects instantly, adjust brightness, and pick a base color for color-driven effects.
+The mood app lets you switch between handmade emoji-style matrix faces instantly.
+The message app lets you save a short text message that scrolls from right to left across the panel in a loop.
+The matrix app lets you switch RGB panel effects instantly, adjust brightness, pick a base color for color-driven effects, and correct the physical matrix mapping when the panel wiring order differs.
 
 ## Project Layout
 
@@ -111,9 +109,10 @@ The device serves the HTML shell itself, but the browser still needs internet ac
 
 ## Apps
 
-The web UI is split into four apps:
+The web UI is split into five apps:
 
-- `Blink App`: preset LED patterns plus custom Morse playback
+- `Mood App`: shows one saved mood icon on the RGB matrix
+- `Message App`: scrolls a saved text message right-to-left on the RGB matrix
 - `RGB Matrix`: controls a 6x10 WS2812B panel connected to `A0 / D0 / GPIO 0`
 - `Bluetooth Scanner`: scans nearby BLE advertisers and shows scan results
 - `Device Info`: shows internal chip temperature and device telemetry
@@ -209,7 +208,11 @@ Returns RGB matrix state including:
 - matrix dimensions and pixel count
 - selected matrix pattern id/label
 - persisted base color and brightness
+- persisted matrix mapping id/label
+- saved mood id
+- saved scrolling message text
 - available matrix effects
+- available wiring/mapping profiles
 - a 6x10 preview frame snapshot
 
 Example:
@@ -227,6 +230,13 @@ Example:
   "selectedPatternLabel": "Rainbow Sweep",
   "brightness": 48,
   "color": "#22c55e",
+  "mappingId": "cols-bl",
+  "mappingLabel": "Columns • Bottom Left",
+  "moodId": "happy",
+  "messageText": "HELLO",
+  "mappings": [
+    { "id": "cols-bl", "label": "Columns • Bottom Left" }
+  ],
   "patterns": [
     { "id": "rainbow", "label": "Rainbow Sweep" }
   ],
@@ -242,6 +252,7 @@ Request body accepts one or more of:
 {
   "patternId": "scanner",
   "color": "#22c55e",
+  "mappingId": "cols-bl",
   "brightness": 64
 }
 ```
@@ -250,8 +261,59 @@ Effect:
 
 - updates the RGB matrix effect immediately
 - updates brightness and/or base color immediately
+- updates the physical matrix wiring map used to place pixels
 - stores the selected matrix settings in NVS
 - returns the updated matrix state JSON
+
+### `GET /api/mood`
+
+Returns Mood app state including:
+
+- matrix availability
+- the currently saved mood id and label
+- whether the matrix is actively showing mood mode
+- the list of available moods
+
+### `POST /api/mood`
+
+Request body:
+
+```json
+{ "id": "happy" }
+```
+
+Effect:
+
+- validates the mood id
+- switches the RGB matrix immediately into Mood mode
+- stores the selected mood in NVS
+- returns the updated mood state JSON
+
+### `GET /api/message`
+
+Returns Message app state including:
+
+- matrix availability
+- the saved normalized text
+- the active matrix mode
+- max message length
+- supported characters
+- scroll direction
+
+### `POST /api/message`
+
+Request body:
+
+```json
+{ "text": "HELLO XIAO" }
+```
+
+Effect:
+
+- normalizes text to supported uppercase characters
+- switches the RGB matrix immediately into Message mode
+- stores the normalized message in NVS
+- returns the updated message state JSON
 
 ## Available Patterns
 
@@ -302,6 +364,23 @@ The matrix app exposes these effects for the 6x10 WS2812B panel:
 26. `cross`
 27. `helix`
 28. `tiles`
+29. `mood`
+30. `message`
+
+The Mood app ships with these 10 saved mood ids:
+
+1. `happy`
+2. `sad`
+3. `excited`
+4. `cool`
+5. `love`
+6. `sleepy`
+7. `angry`
+8. `surprised`
+9. `winky`
+10. `silly`
+
+The Message app supports `A-Z`, `0-9`, spaces, and `. , ! ? -` with a maximum length of `64` characters.
 
 The active pattern is persisted in:
 
@@ -319,6 +398,9 @@ The RGB matrix settings are persisted in:
 - key: `matrixPattern`
 - key: `matrixBright`
 - key: `matrixColor`
+- key: `matrixMap`
+- key: `matrixMood`
+- key: `matrixMessage`
 
 ## Implementation Notes
 
@@ -330,6 +412,7 @@ The RGB matrix settings are persisted in:
 - mDNS is started only after Wi-Fi connects.
 - The hostname shown and advertised is `xiao.local`.
 - Morse input supports letters, digits, spaces, and `. , ? ! - / @ ( )`.
+- Message input supports `A-Z`, `0-9`, spaces, and `. , ! ? -`.
 - The matrix firmware assumes the WS2812B data input is wired to `A0 / D0 / GPIO 0`.
 - BLE scanning is BLE-only, not classic Bluetooth discovery.
 - The default partition scheme is too small; use `PartitionScheme=huge_app`.

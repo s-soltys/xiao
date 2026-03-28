@@ -51,9 +51,21 @@ constexpr char kMorseTextPreferenceKey[] = "morseText";
 constexpr char kMatrixPatternPreferenceKey[] = "matrixPattern";
 constexpr char kMatrixBrightnessPreferenceKey[] = "matrixBright";
 constexpr char kMatrixColorPreferenceKey[] = "matrixColor";
+constexpr char kMatrixMappingPreferenceKey[] = "matrixMap";
+constexpr char kMatrixMoodPreferenceKey[] = "matrixMood";
+constexpr char kMatrixMessagePreferenceKey[] = "matrixMessage";
 constexpr char kMorsePatternId[] = "morse-text";
 constexpr char kMorsePatternLabel[] = "Custom Morse";
+constexpr char kMatrixMoodPatternId[] = "mood";
+constexpr char kMatrixMessagePatternId[] = "message";
+constexpr char kDefaultMatrixMappingId[] = "cols-bl";
+constexpr char kDefaultMatrixMoodId[] = "happy";
+constexpr char kDefaultMatrixMessage[] = "HELLO";
 constexpr int kJsonFieldMissing = -1000;
+constexpr size_t kMaxMatrixMessageLength = 64;
+constexpr uint8_t kMatrixGlyphWidth = 5;
+constexpr uint8_t kMatrixGlyphSpacing = 1;
+constexpr uint16_t kMatrixMessageScrollMs = 110;
 
 struct PatternStep {
   uint8_t brightness;
@@ -98,6 +110,25 @@ struct MatrixPatternDefinition {
   const char *id;
   const char *label;
   bool animated;
+};
+
+struct MatrixMappingDefinition {
+  const char *id;
+  const char *label;
+  bool columnMajor;
+  bool flipX;
+  bool flipY;
+};
+
+struct MoodDefinition {
+  const char *id;
+  const char *label;
+  const char *rows[kMatrixRows];
+};
+
+struct MatrixGlyph {
+  char character;
+  uint8_t rows[kMatrixRows];
 };
 
 const PatternStep kSosSteps[] = {
@@ -190,6 +221,73 @@ const MatrixPatternDefinition kMatrixPatterns[] = {
   {"cross", "Cross Pulse", true},
   {"helix", "Helix Bands", true},
   {"tiles", "Tile Shift", true},
+  {kMatrixMoodPatternId, "Mood Icon", false},
+  {kMatrixMessagePatternId, "Scrolling Message", true},
+};
+
+const MatrixMappingDefinition kMatrixMappings[] = {
+  {"cols-tl", "Columns • Top Left", true, false, false},
+  {"cols-tr", "Columns • Top Right", true, true, false},
+  {"cols-bl", "Columns • Bottom Left", true, false, true},
+  {"cols-br", "Columns • Bottom Right", true, true, true},
+};
+
+const MoodDefinition kMoods[] = {
+  {"happy", "Happy", {".DDwwwwDD.", "DnnNNNNnnD", "nNDNnnNDNn", "nNNPnnPNNn", "nNNrrrrNNn", ".nnRRRRnn."}},
+  {"sad", "Sad", {".DDwwwwDD.", "DnnNNNNnnD", "nNDNnnNDNn", "nNNnnnnBNn", "nNNP..PNNn", ".RnnnnnnR."}},
+  {"excited", "Excited", {".yywwwwyy.", "yNNYYYYNNy", "YNWNYYNWNY", "YYYPYYPYYY", "YYRrrrrRYY", ".yyRPPRyy."}},
+  {"cool", "Cool", {".DDDDDDDD.", "DooOOOOooD", "oDDDDDDDDo", "oOOooooOOo", "oOOWWWOOOo", ".ooRRRRoo."}},
+  {"love", "Love", {".DDwwwwDD.", "DnnNNNNnnD", "nRRNnnNRRn", "nNNPnnPNNn", "nNNppppNNn", ".nnPPPPnn."}},
+  {"sleepy", "Sleepy", {".BBBBBBbb.", "BnnNNNNnnB", "nNDDnnDDNn", "nNNnnnnNNn", "nNNnPPnNNn", ".bb....bb."}},
+  {"angry", "Angry", {".rrDDDDrr.", "rooOOOOoor", "oDrOnnOrDo", "oOOnnnnOOo", "oOORRRROOo", ".Rr....rR."}},
+  {"surprised", "Surprised", {".yywwwwyy.", "yNNYYYYNNy", "YNDNYYNDNY", "YYYbDDbYYY", "YYYbDDbYYY", ".yyRRRRyy."}},
+  {"winky", "Winky", {".DDwwwwDD.", "DnnNNNNnnD", "nNDNnnDDNn", "nNNPnnPNNn", "nNNrrrrNNn", ".nnRPRRnn."}},
+  {"silly", "Silly", {".DDwwwwDD.", "DnnNNNNnnD", "nNDNnnNDNn", "nNNPnnPNNn", "nNNrrrrNNn", ".nnPppPnn."}},
+};
+
+const MatrixGlyph kMatrixGlyphs[] = {
+  {' ', {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+  {'-', {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00}},
+  {'.', {0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C}},
+  {',', {0x00, 0x00, 0x00, 0x0C, 0x04, 0x08}},
+  {'!', {0x04, 0x04, 0x04, 0x04, 0x00, 0x04}},
+  {'?', {0x0E, 0x11, 0x02, 0x04, 0x00, 0x04}},
+  {'0', {0x0E, 0x13, 0x15, 0x19, 0x11, 0x0E}},
+  {'1', {0x04, 0x0C, 0x04, 0x04, 0x04, 0x0E}},
+  {'2', {0x0E, 0x11, 0x02, 0x04, 0x08, 0x1F}},
+  {'3', {0x1E, 0x01, 0x06, 0x01, 0x11, 0x0E}},
+  {'4', {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02}},
+  {'5', {0x1F, 0x10, 0x1E, 0x01, 0x11, 0x0E}},
+  {'6', {0x0E, 0x10, 0x1E, 0x11, 0x11, 0x0E}},
+  {'7', {0x1F, 0x02, 0x04, 0x08, 0x08, 0x08}},
+  {'8', {0x0E, 0x11, 0x0E, 0x11, 0x11, 0x0E}},
+  {'9', {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x0E}},
+  {'A', {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11}},
+  {'B', {0x1E, 0x11, 0x1E, 0x11, 0x11, 0x1E}},
+  {'C', {0x0E, 0x11, 0x10, 0x10, 0x11, 0x0E}},
+  {'D', {0x1E, 0x11, 0x11, 0x11, 0x11, 0x1E}},
+  {'E', {0x1F, 0x10, 0x1E, 0x10, 0x10, 0x1F}},
+  {'F', {0x1F, 0x10, 0x1E, 0x10, 0x10, 0x10}},
+  {'G', {0x0E, 0x11, 0x10, 0x17, 0x11, 0x0E}},
+  {'H', {0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}},
+  {'I', {0x1F, 0x04, 0x04, 0x04, 0x04, 0x1F}},
+  {'J', {0x01, 0x01, 0x01, 0x11, 0x11, 0x0E}},
+  {'K', {0x11, 0x12, 0x1C, 0x12, 0x11, 0x11}},
+  {'L', {0x10, 0x10, 0x10, 0x10, 0x10, 0x1F}},
+  {'M', {0x11, 0x1B, 0x15, 0x11, 0x11, 0x11}},
+  {'N', {0x11, 0x19, 0x15, 0x13, 0x11, 0x11}},
+  {'O', {0x0E, 0x11, 0x11, 0x11, 0x11, 0x0E}},
+  {'P', {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10}},
+  {'Q', {0x0E, 0x11, 0x11, 0x15, 0x12, 0x0D}},
+  {'R', {0x1E, 0x11, 0x11, 0x1E, 0x12, 0x11}},
+  {'S', {0x0F, 0x10, 0x0E, 0x01, 0x11, 0x0E}},
+  {'T', {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04}},
+  {'U', {0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}},
+  {'V', {0x11, 0x11, 0x11, 0x11, 0x0A, 0x04}},
+  {'W', {0x11, 0x11, 0x15, 0x15, 0x1B, 0x11}},
+  {'X', {0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11}},
+  {'Y', {0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}},
+  {'Z', {0x1F, 0x02, 0x04, 0x08, 0x10, 0x1F}},
 };
 
 WebServer webServer(kHttpPort);
@@ -204,8 +302,11 @@ RgbColor matrixFrame[kMatrixLedCount];
 
 const PatternDefinition *activePattern = &kPatterns[0];
 const MatrixPatternDefinition *activeMatrixPattern = &kMatrixPatterns[2];
+const MatrixMappingDefinition *activeMatrixMapping = &kMatrixMappings[2];
 String morseText;
 String matrixColorHex = String(kMatrixDefaultColorHex);
+String matrixMoodId = String(kDefaultMatrixMoodId);
+String matrixMessageText = String(kDefaultMatrixMessage);
 String matrixError;
 uint8_t matrixBrightness = kMatrixDefaultBrightness;
 size_t activeStepIndex = 0;
@@ -225,6 +326,8 @@ bool matrixReady = false;
 bool matrixFrameDirty = true;
 String bleScanError;
 RgbColor matrixBaseColor = {0x22, 0xc5, 0x5e};
+
+String normalizeMatrixMessage(const String &rawText);
 
 bool hasWifiCredentials() {
   return kWifiSsid[0] != '\0' && kWifiPassword[0] != '\0';
@@ -291,12 +394,28 @@ float triangleUnit(float progress) {
 }
 
 size_t matrixPixelIndex(uint8_t row, uint8_t column) {
-  const size_t baseIndex = static_cast<size_t>(row) * kMatrixColumns;
-  if ((row & 1U) == 0) {
-    return baseIndex + column;
+  if (activeMatrixMapping == nullptr) {
+    return 0;
   }
 
-  return baseIndex + (kMatrixColumns - 1 - column);
+  const uint8_t mappedRow = activeMatrixMapping->flipY ? static_cast<uint8_t>(kMatrixRows - 1 - row) : row;
+  const uint8_t mappedColumn = activeMatrixMapping->flipX ? static_cast<uint8_t>(kMatrixColumns - 1 - column) : column;
+
+  if (!activeMatrixMapping->columnMajor) {
+    const size_t baseIndex = static_cast<size_t>(mappedRow) * kMatrixColumns;
+    if ((mappedRow & 1U) == 0) {
+      return baseIndex + mappedColumn;
+    }
+
+    return baseIndex + (kMatrixColumns - 1 - mappedColumn);
+  }
+
+  const size_t baseIndex = static_cast<size_t>(mappedColumn) * kMatrixRows;
+  if ((mappedColumn & 1U) == 0) {
+    return baseIndex + mappedRow;
+  }
+
+  return baseIndex + (kMatrixRows - 1 - mappedRow);
 }
 
 void clearMatrixFrame() {
@@ -448,6 +567,36 @@ const MatrixPatternDefinition *findMatrixPatternById(const String &patternId) {
   for (const MatrixPatternDefinition &pattern : kMatrixPatterns) {
     if (patternId == pattern.id) {
       return &pattern;
+    }
+  }
+
+  return nullptr;
+}
+
+const MatrixMappingDefinition *findMatrixMappingById(const String &mappingId) {
+  for (const MatrixMappingDefinition &mapping : kMatrixMappings) {
+    if (mappingId == mapping.id) {
+      return &mapping;
+    }
+  }
+
+  return nullptr;
+}
+
+const MoodDefinition *findMoodById(const String &moodId) {
+  for (const MoodDefinition &mood : kMoods) {
+    if (moodId == mood.id) {
+      return &mood;
+    }
+  }
+
+  return nullptr;
+}
+
+const MatrixGlyph *findMatrixGlyph(char character) {
+  for (const MatrixGlyph &glyph : kMatrixGlyphs) {
+    if (glyph.character == character) {
+      return &glyph;
     }
   }
 
@@ -866,6 +1015,7 @@ void persistMatrixState() {
   preferences.putString(kMatrixPatternPreferenceKey, activeMatrixPattern->id);
   preferences.putUChar(kMatrixBrightnessPreferenceKey, matrixBrightness);
   preferences.putString(kMatrixColorPreferenceKey, matrixColorHex);
+  preferences.putString(kMatrixMappingPreferenceKey, activeMatrixMapping->id);
 }
 
 bool selectMatrixPatternById(const String &patternId, bool persistSelection) {
@@ -920,12 +1070,91 @@ bool updateMatrixBrightness(int brightness, bool persistSelection) {
   return true;
 }
 
+bool updateMatrixMapping(const String &mappingId, bool persistSelection) {
+  const MatrixMappingDefinition *mapping = findMatrixMappingById(mappingId);
+  if (mapping == nullptr) {
+    return false;
+  }
+
+  activeMatrixMapping = mapping;
+  matrixFrameDirty = true;
+  lastMatrixFrameAtMs = 0;
+
+  if (persistSelection) {
+    persistMatrixState();
+  }
+
+  return true;
+}
+
+bool updateMatrixMood(const String &moodId, bool persistSelection) {
+  const MoodDefinition *mood = findMoodById(moodId);
+  if (mood == nullptr) {
+    return false;
+  }
+
+  matrixMoodId = mood->id;
+  matrixFrameDirty = true;
+  lastMatrixFrameAtMs = 0;
+
+  if (persistSelection) {
+    preferences.putString(kMatrixMoodPreferenceKey, matrixMoodId);
+  }
+
+  return true;
+}
+
+bool activateMatrixMood(const String &moodId, bool persistSelection) {
+  if (!updateMatrixMood(moodId, persistSelection)) {
+    return false;
+  }
+
+  return selectMatrixPatternById(kMatrixMoodPatternId, persistSelection);
+}
+
+bool updateMatrixMessageText(const String &rawText, bool persistSelection) {
+  const String normalizedText = normalizeMatrixMessage(rawText);
+  if (normalizedText.isEmpty()) {
+    return false;
+  }
+
+  matrixMessageText = normalizedText;
+  matrixFrameDirty = true;
+  lastMatrixFrameAtMs = 0;
+
+  if (persistSelection) {
+    preferences.putString(kMatrixMessagePreferenceKey, matrixMessageText);
+  }
+
+  return true;
+}
+
+bool activateMatrixMessage(const String &rawText, bool persistSelection) {
+  if (!updateMatrixMessageText(rawText, persistSelection)) {
+    return false;
+  }
+
+  return selectMatrixPatternById(kMatrixMessagePatternId, persistSelection);
+}
+
 void loadSavedMatrixState() {
   updateMatrixColor(preferences.getString(kMatrixColorPreferenceKey, kMatrixDefaultColorHex), false);
 
   const uint8_t storedBrightness = preferences.getUChar(kMatrixBrightnessPreferenceKey, kMatrixDefaultBrightness);
   if (!updateMatrixBrightness(storedBrightness, false)) {
     updateMatrixBrightness(kMatrixDefaultBrightness, false);
+  }
+
+  if (!updateMatrixMapping(preferences.getString(kMatrixMappingPreferenceKey, kDefaultMatrixMappingId), false)) {
+    updateMatrixMapping(kDefaultMatrixMappingId, false);
+  }
+
+  if (!updateMatrixMood(preferences.getString(kMatrixMoodPreferenceKey, kDefaultMatrixMoodId), false)) {
+    updateMatrixMood(kDefaultMatrixMoodId, false);
+  }
+
+  if (!updateMatrixMessageText(preferences.getString(kMatrixMessagePreferenceKey, kDefaultMatrixMessage), false)) {
+    updateMatrixMessageText(kDefaultMatrixMessage, false);
   }
 
   const String storedPattern = preferences.getString(kMatrixPatternPreferenceKey, kMatrixPatterns[2].id);
@@ -973,12 +1202,165 @@ RgbColor matrixPreviewColorAt(uint8_t row, uint8_t column) {
   return scaleColor(matrixFrame[matrixPixelIndex(row, column)], matrixBrightness);
 }
 
+RgbColor moodPixelColor(char token) {
+  switch (token) {
+    case 'Y':
+      return makeColor(255, 224, 102);
+    case 'y':
+      return makeColor(176, 112, 24);
+    case 'N':
+      return makeColor(255, 206, 168);
+    case 'n':
+      return makeColor(140, 78, 48);
+    case 'O':
+      return makeColor(255, 162, 82);
+    case 'o':
+      return makeColor(168, 88, 32);
+    case 'R':
+      return makeColor(255, 54, 78);
+    case 'r':
+      return makeColor(128, 18, 42);
+    case 'P':
+      return makeColor(255, 126, 196);
+    case 'p':
+      return makeColor(168, 40, 108);
+    case 'B':
+      return makeColor(92, 194, 255);
+    case 'b':
+      return makeColor(18, 64, 176);
+    case 'G':
+      return makeColor(120, 248, 126);
+    case 'g':
+      return makeColor(24, 116, 48);
+    case 'W':
+      return makeColor(255, 255, 255);
+    case 'w':
+      return makeColor(255, 244, 200);
+    case 'D':
+      return makeColor(26, 28, 32);
+    default:
+      return makeColor(0, 0, 0);
+  }
+}
+
+void drawMood(const MoodDefinition &mood) {
+  clearMatrixFrame();
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    const char *pixels = mood.rows[row];
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      setMatrixPixel(row, column, moodPixelColor(pixels[column]));
+    }
+  }
+}
+
+void drawGlyph(const MatrixGlyph &glyph, int originColumn, const RgbColor &color) {
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixGlyphWidth; ++column) {
+      if ((glyph.rows[row] & (1U << (kMatrixGlyphWidth - 1U - column))) == 0) {
+        continue;
+      }
+
+      const int targetColumn = originColumn + column;
+      if (targetColumn < 0 || targetColumn >= kMatrixColumns) {
+        continue;
+      }
+
+      setMatrixPixel(row, static_cast<uint8_t>(targetColumn), color);
+    }
+  }
+}
+
+size_t matrixMessageWidth(const String &text) {
+  if (text.isEmpty()) {
+    return 0;
+  }
+
+  return (text.length() * (kMatrixGlyphWidth + kMatrixGlyphSpacing)) - kMatrixGlyphSpacing;
+}
+
+String normalizeMatrixMessage(const String &rawText) {
+  String normalized;
+  normalized.reserve(min(rawText.length(), kMaxMatrixMessageLength));
+  bool previousWasSpace = true;
+
+  for (size_t index = 0; index < rawText.length(); ++index) {
+    char current = static_cast<char>(toupper(static_cast<unsigned char>(rawText.charAt(index))));
+    if (isspace(static_cast<unsigned char>(current))) {
+      if (!previousWasSpace && !normalized.isEmpty()) {
+        normalized += ' ';
+        previousWasSpace = true;
+      }
+      continue;
+    }
+
+    if (findMatrixGlyph(current) == nullptr) {
+      continue;
+    }
+
+    if (normalized.length() >= kMaxMatrixMessageLength) {
+      break;
+    }
+
+    normalized += current;
+    previousWasSpace = false;
+  }
+
+  while (!normalized.isEmpty() && normalized.charAt(normalized.length() - 1) == ' ') {
+    normalized.remove(normalized.length() - 1);
+  }
+
+  return normalized;
+}
+
 void renderMatrixOff() {
   clearMatrixFrame();
 }
 
 void renderMatrixSolid() {
   fillMatrixFrame(matrixBaseColor);
+}
+
+void renderMatrixMood() {
+  const MoodDefinition *mood = findMoodById(matrixMoodId);
+  if (mood == nullptr) {
+    mood = findMoodById(String(kDefaultMatrixMoodId));
+  }
+
+  if (mood == nullptr) {
+    clearMatrixFrame();
+    return;
+  }
+
+  drawMood(*mood);
+}
+
+void renderMatrixMessage(uint32_t now) {
+  clearMatrixFrame();
+
+  if (matrixMessageText.isEmpty()) {
+    return;
+  }
+
+  const int textWidth = static_cast<int>(matrixMessageWidth(matrixMessageText));
+  if (textWidth <= 0) {
+    return;
+  }
+
+  const int travel = textWidth + kMatrixColumns + 1;
+  const int offset = static_cast<int>((now / kMatrixMessageScrollMs) % static_cast<uint32_t>(travel));
+  const int originColumn = kMatrixColumns - offset;
+  const RgbColor textColor = blendColors(matrixBaseColor, makeColor(255, 255, 255), 104);
+
+  for (size_t index = 0; index < matrixMessageText.length(); ++index) {
+    const MatrixGlyph *glyph = findMatrixGlyph(matrixMessageText.charAt(index));
+    if (glyph == nullptr) {
+      continue;
+    }
+
+    const int glyphColumn = originColumn + static_cast<int>(index * (kMatrixGlyphWidth + kMatrixGlyphSpacing));
+    drawGlyph(*glyph, glyphColumn, textColor);
+  }
 }
 
 void renderMatrixRainbow(uint32_t now) {
@@ -1514,6 +1896,10 @@ void renderMatrixFrame(uint32_t now) {
     renderMatrixHelix(now);
   } else if (strcmp(activeMatrixPattern->id, "tiles") == 0) {
     renderMatrixTiles(now);
+  } else if (strcmp(activeMatrixPattern->id, kMatrixMoodPatternId) == 0) {
+    renderMatrixMood();
+  } else if (strcmp(activeMatrixPattern->id, kMatrixMessagePatternId) == 0) {
+    renderMatrixMessage(now);
   } else {
     renderMatrixOff();
   }
@@ -1673,7 +2059,7 @@ String buildDeviceJson() {
 
 String buildMatrixJson() {
   String json;
-  json.reserve(3200);
+  json.reserve(4352);
 
   json += F("{\"available\":");
   json += matrixReady ? F("true") : F("false");
@@ -1696,7 +2082,29 @@ String buildMatrixJson() {
   json += String(matrixBrightness);
   json += F(",\"color\":\"");
   json += matrixColorHex;
-  json += F("\",\"patterns\":[");
+  json += F("\",\"mappingId\":\"");
+  json += activeMatrixMapping->id;
+  json += F("\",\"mappingLabel\":\"");
+  json += activeMatrixMapping->label;
+  json += F("\",\"moodId\":\"");
+  json += jsonEscape(matrixMoodId);
+  json += F("\",\"messageText\":\"");
+  json += jsonEscape(matrixMessageText);
+  json += F("\",\"mappings\":[");
+
+  for (size_t index = 0; index < sizeof(kMatrixMappings) / sizeof(kMatrixMappings[0]); ++index) {
+    if (index > 0) {
+      json += ',';
+    }
+
+    json += F("{\"id\":\"");
+    json += kMatrixMappings[index].id;
+    json += F("\",\"label\":\"");
+    json += kMatrixMappings[index].label;
+    json += F("\"}");
+  }
+
+  json += F("],\"patterns\":[");
 
   for (size_t index = 0; index < sizeof(kMatrixPatterns) / sizeof(kMatrixPatterns[0]); ++index) {
     if (index > 0) {
@@ -1725,6 +2133,57 @@ String buildMatrixJson() {
   }
 
   json += F("]}");
+  return json;
+}
+
+String buildMoodJson() {
+  String json;
+  json.reserve(1024);
+
+  const MoodDefinition *selectedMood = findMoodById(matrixMoodId);
+  const char *selectedLabel = selectedMood == nullptr ? "Unknown" : selectedMood->label;
+
+  json += F("{\"available\":");
+  json += matrixReady ? F("true") : F("false");
+  json += F(",\"selectedPatternId\":\"");
+  json += activeMatrixPattern->id;
+  json += F("\",\"selectedMoodId\":\"");
+  json += jsonEscape(matrixMoodId);
+  json += F("\",\"selectedMoodLabel\":\"");
+  json += jsonEscape(String(selectedLabel));
+  json += F("\",\"moods\":[");
+
+  for (size_t index = 0; index < sizeof(kMoods) / sizeof(kMoods[0]); ++index) {
+    if (index > 0) {
+      json += ',';
+    }
+
+    json += F("{\"id\":\"");
+    json += kMoods[index].id;
+    json += F("\",\"label\":\"");
+    json += kMoods[index].label;
+    json += F("\"}");
+  }
+
+  json += F("]}");
+  return json;
+}
+
+String buildMessageJson() {
+  String json;
+  json.reserve(512);
+
+  json += F("{\"available\":");
+  json += matrixReady ? F("true") : F("false");
+  json += F(",\"selectedPatternId\":\"");
+  json += activeMatrixPattern->id;
+  json += F("\",\"text\":\"");
+  json += jsonEscape(matrixMessageText);
+  json += F("\",\"maxLength\":");
+  json += String(kMaxMatrixMessageLength);
+  json += F(",\"supportedCharacters\":\"A-Z, 0-9, space, . , ! ? -\",");
+  json += F("\"scrollDirection\":\"right-to-left\"}");
+
   return json;
 }
 
@@ -1819,6 +2278,14 @@ void handleMatrixState() {
   sendJson(200, buildMatrixJson());
 }
 
+void handleMoodState() {
+  sendJson(200, buildMoodJson());
+}
+
+void handleMessageState() {
+  sendJson(200, buildMessageJson());
+}
+
 void handlePatternChange() {
   String patternId;
   if (webServer.hasArg(F("plain"))) {
@@ -1873,17 +2340,23 @@ void handleMatrixUpdate() {
     nextColor = webServer.arg(F("color"));
   }
 
+  String nextMappingId = extractJsonStringField(body, "mappingId");
+  if (nextMappingId.isEmpty() && webServer.hasArg(F("mappingId"))) {
+    nextMappingId = webServer.arg(F("mappingId"));
+  }
+
   int nextBrightness = extractJsonIntField(body, "brightness");
   if (nextBrightness == kJsonFieldMissing && webServer.hasArg(F("brightness"))) {
     nextBrightness = webServer.arg(F("brightness")).toInt();
   }
 
-  if (nextPatternId.isEmpty() && nextColor.isEmpty() && nextBrightness == kJsonFieldMissing) {
-    sendJsonError(400, F("Request body must include patternId, color, or brightness."));
+  if (nextPatternId.isEmpty() && nextColor.isEmpty() && nextMappingId.isEmpty() && nextBrightness == kJsonFieldMissing) {
+    sendJsonError(400, F("Request body must include patternId, color, mappingId, or brightness."));
     return;
   }
 
   const MatrixPatternDefinition *candidatePattern = activeMatrixPattern;
+  const MatrixMappingDefinition *candidateMapping = activeMatrixMapping;
   RgbColor candidateColor = matrixBaseColor;
   String candidateColorHex = matrixColorHex;
   uint8_t candidateBrightness = matrixBrightness;
@@ -1901,12 +2374,21 @@ void handleMatrixUpdate() {
     return;
   }
 
+  if (!nextMappingId.isEmpty()) {
+    candidateMapping = findMatrixMappingById(nextMappingId);
+    if (candidateMapping == nullptr) {
+      sendJsonError(400, String(F("Unknown matrix mapping id: ")) + nextMappingId);
+      return;
+    }
+  }
+
   if (nextBrightness != kJsonFieldMissing && (nextBrightness < 0 || nextBrightness > 255)) {
     sendJsonError(400, F("Matrix brightness must be between 0 and 255."));
     return;
   }
 
   activeMatrixPattern = candidatePattern;
+  activeMatrixMapping = candidateMapping;
   matrixBaseColor = candidateColor;
   matrixColorHex = candidateColorHex;
   if (nextBrightness != kJsonFieldMissing) {
@@ -1918,6 +2400,49 @@ void handleMatrixUpdate() {
   applyMatrixFrameNow();
 
   sendJson(200, buildMatrixJson());
+}
+
+void handleMoodChange() {
+  String moodId;
+  if (webServer.hasArg(F("plain"))) {
+    moodId = extractJsonStringField(webServer.arg(F("plain")), "id");
+  }
+
+  if (moodId.isEmpty() && webServer.hasArg(F("id"))) {
+    moodId = webServer.arg(F("id"));
+  }
+
+  if (moodId.isEmpty()) {
+    sendJsonError(400, F("Request body must include a non-empty mood id."));
+    return;
+  }
+
+  if (!activateMatrixMood(moodId, true)) {
+    sendJsonError(400, String(F("Unknown mood id: ")) + moodId);
+    return;
+  }
+
+  applyMatrixFrameNow();
+  sendJson(200, buildMoodJson());
+}
+
+void handleMessageChange() {
+  String nextMessage;
+  if (webServer.hasArg(F("plain"))) {
+    nextMessage = extractJsonStringField(webServer.arg(F("plain")), "text");
+  }
+
+  if (nextMessage.isEmpty() && webServer.hasArg(F("text"))) {
+    nextMessage = webServer.arg(F("text"));
+  }
+
+  if (!activateMatrixMessage(nextMessage, true)) {
+    sendJsonError(400, F("Message text must contain A-Z, 0-9, spaces, or . , ! ? -."));
+    return;
+  }
+
+  applyMatrixFrameNow();
+  sendJson(200, buildMessageJson());
 }
 
 bool startBleScan() {
@@ -1964,6 +2489,10 @@ void configureHttpServer() {
   webServer.on(F("/api/device"), HTTP_GET, handleDeviceState);
   webServer.on(F("/api/matrix"), HTTP_GET, handleMatrixState);
   webServer.on(F("/api/matrix"), HTTP_POST, handleMatrixUpdate);
+  webServer.on(F("/api/mood"), HTTP_GET, handleMoodState);
+  webServer.on(F("/api/mood"), HTTP_POST, handleMoodChange);
+  webServer.on(F("/api/message"), HTTP_GET, handleMessageState);
+  webServer.on(F("/api/message"), HTTP_POST, handleMessageChange);
   webServer.onNotFound(handleNotFound);
 }
 
@@ -2194,7 +2723,7 @@ void setup() {
   delay(250);
 
   pinMode(kLedPin, OUTPUT);
-  setLedBrightness(0);
+  setLedBrightness(kPwmMax);
   enableBoardWifiHardware();
   initializeBluetoothScanner();
 
@@ -2208,7 +2737,6 @@ void setup() {
 }
 
 void loop() {
-  updateLedPattern();
   updateMatrixPattern();
   updateWifiServices();
 

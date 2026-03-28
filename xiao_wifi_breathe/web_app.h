@@ -118,17 +118,35 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
         return formatUptime(ms);
       }
 
+      function labelForApp(appId) {
+        if (appId === 'blink') {
+          return 'Blink App';
+        }
+        if (appId === 'matrix') {
+          return 'RGB Matrix';
+        }
+        if (appId === 'bluetooth') {
+          return 'Bluetooth Scanner';
+        }
+        return 'Device Info';
+      }
+
       function App() {
         const [activeApp, setActiveApp] = useState('blink');
         const [blinkState, setBlinkState] = useState(null);
+        const [matrixState, setMatrixState] = useState(null);
         const [bluetoothState, setBluetoothState] = useState(null);
         const [deviceState, setDeviceState] = useState(null);
         const [loading, setLoading] = useState(true);
         const [refreshing, setRefreshing] = useState(false);
         const [blinkBusyId, setBlinkBusyId] = useState('');
+        const [matrixBusy, setMatrixBusy] = useState(false);
         const [scanBusy, setScanBusy] = useState(false);
         const [error, setError] = useState('');
         const [morseInput, setMorseInput] = useState('');
+        const [matrixColor, setMatrixColor] = useState('#22c55e');
+        const [matrixBrightness, setMatrixBrightness] = useState('48');
+        const [matrixInputsReady, setMatrixInputsReady] = useState(false);
 
         async function fetchJson(url, options) {
           const response = await fetch(url, options);
@@ -143,6 +161,17 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
           const payload = await fetchJson('/api/state', { cache: 'no-store' });
           setBlinkState(payload);
           setMorseInput(payload.morseText || '');
+          return payload;
+        }
+
+        async function fetchMatrixState(syncInputs = false) {
+          const payload = await fetchJson('/api/matrix', { cache: 'no-store' });
+          setMatrixState(payload);
+          if (syncInputs || !matrixInputsReady) {
+            setMatrixColor(payload.color || '#22c55e');
+            setMatrixBrightness(String(payload.brightness ?? 48));
+            setMatrixInputsReady(true);
+          }
           return payload;
         }
 
@@ -165,13 +194,14 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
           setRefreshing(true);
           setError('');
 
-          const [blinkResult, bluetoothResult, deviceResult] = await Promise.allSettled([
+          const [blinkResult, matrixResult, bluetoothResult, deviceResult] = await Promise.allSettled([
             fetchBlinkState(),
+            fetchMatrixState(true),
             fetchBluetoothState(),
             fetchDeviceState(),
           ]);
 
-          const firstError = [blinkResult, bluetoothResult, deviceResult].find((result) => result.status === 'rejected');
+          const firstError = [blinkResult, matrixResult, bluetoothResult, deviceResult].find((result) => result.status === 'rejected');
           if (firstError) {
             setError(firstError.reason?.message || 'Unable to refresh one or more apps.');
           }
@@ -206,6 +236,18 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
           const intervalId = window.setInterval(() => {
             fetchDeviceState().catch(() => {});
           }, 5000);
+
+          return () => window.clearInterval(intervalId);
+        }, [activeApp]);
+
+        useEffect(() => {
+          if (activeApp !== 'matrix') {
+            return undefined;
+          }
+
+          const intervalId = window.setInterval(() => {
+            fetchMatrixState(false).catch(() => {});
+          }, 700);
 
           return () => window.clearInterval(intervalId);
         }, [activeApp]);
@@ -252,6 +294,43 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
           }
         }
 
+        async function updateMatrixSettings(changes) {
+          setMatrixBusy(true);
+          setError('');
+
+          try {
+            const payload = await fetchJson('/api/matrix', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(changes),
+            });
+            setMatrixState(payload);
+            setMatrixColor(payload.color || '#22c55e');
+            setMatrixBrightness(String(payload.brightness ?? 48));
+            setMatrixInputsReady(true);
+          } catch (requestError) {
+            setError(requestError.message || 'Unable to update the RGB matrix.');
+          } finally {
+            setMatrixBusy(false);
+          }
+        }
+
+        async function applyMatrixControls(event) {
+          event.preventDefault();
+          const brightnessValue = Number(matrixBrightness);
+          if (!Number.isFinite(brightnessValue) || brightnessValue < 0 || brightnessValue > 255) {
+            setError('Matrix brightness must be between 0 and 255.');
+            return;
+          }
+
+          await updateMatrixSettings({
+            color: matrixColor,
+            brightness: Math.round(brightnessValue),
+          });
+        }
+
         async function startBluetoothScan() {
           setScanBusy(true);
           setError('');
@@ -283,6 +362,10 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
         }
 
         const sortedBleResults = (bluetoothState?.results || []).slice().sort((left, right) => right.rssi - left.rssi);
+        const activeAppLabel = labelForApp(activeApp);
+        const previewFrame =
+          matrixState?.frame || Array.from({ length: (matrixState?.rows || 6) * (matrixState?.columns || 10) }, () => '#000000');
+        const previewColumns = matrixState?.columns || 10;
 
         return (
           <main className="mx-auto flex min-h-screen max-w-7xl px-5 py-8 sm:py-10">
@@ -295,8 +378,8 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                       XIAO Device Console
                     </h1>
                     <p className="mt-4 max-w-3xl text-base text-slate-600 sm:text-lg">
-                      Switch between the Blink app, Bluetooth scanner, and Device Info app. All apps are served directly
-                      from the XIAO ESP32-C6.
+                      Switch between Blink, RGB Matrix, Bluetooth Scanner, and Device Info. All four apps are served
+                      directly from the XIAO ESP32-C6.
                     </p>
                   </div>
 
@@ -319,13 +402,20 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                   </div>
                 </section>
 
-                <section className="grid gap-3 lg:grid-cols-3">
+                <section className="grid gap-3 lg:grid-cols-4">
                   <AppTab
                     id="blink"
                     activeApp={activeApp}
                     onSelect={setActiveApp}
                     label="Blink App"
-                    description="Preset LED patterns plus custom Morse playback."
+                    description="Preset onboard LED patterns plus custom Morse playback."
+                  />
+                  <AppTab
+                    id="matrix"
+                    activeApp={activeApp}
+                    onSelect={setActiveApp}
+                    label="RGB Matrix"
+                    description="Control the 6x10 WS2812B panel on A0/D0 with animated effects."
                   />
                   <AppTab
                     id="bluetooth"
@@ -346,9 +436,7 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                 <section className="flex flex-wrap items-center justify-between gap-3">
                   <div className="rounded-3xl border border-slate-200 bg-slate-950 px-5 py-4 text-white">
                     <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">Current Focus</div>
-                    <div className="mt-2 text-2xl font-bold sm:text-3xl">
-                      {activeApp === 'blink' ? 'Blink App' : activeApp === 'bluetooth' ? 'Bluetooth Scanner' : 'Device Info'}
-                    </div>
+                    <div className="mt-2 text-2xl font-bold sm:text-3xl">{activeAppLabel}</div>
                   </div>
 
                   <button
@@ -440,6 +528,193 @@ const char kWebAppHtml[] PROGMEM = R"HTML(
                             <div className="mt-4 text-xl font-bold">{pattern.label}</div>
                             <div className={`mt-3 text-sm ${isActive ? 'text-teal-300' : 'text-slate-500'}`}>
                               {isBusy ? 'Switching now…' : isActive ? 'Stored and running' : 'Tap to activate'}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </section>
+                  </section>
+                ) : null}
+
+                {activeApp === 'matrix' ? (
+                  <section className="grid gap-6">
+                    <div className="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
+                      <div className="rounded-3xl border border-slate-200 bg-slate-950 px-5 py-5 text-white">
+                        <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">RGB Matrix Output</div>
+                        <div className="mt-2 text-2xl font-bold sm:text-3xl">
+                          {matrixState?.selectedPatternLabel || 'Loading effect'}
+                        </div>
+                        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
+                          Drives a 6x10 WS2812B panel from the XIAO ESP32-C6 on <span className="font-semibold text-white">A0/D0</span>.
+                          The preview below refreshes while this app is open.
+                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-300">
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{matrixState?.pixelCount || 60} pixels</span>
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                            Brightness {matrixState?.brightness ?? 0}/255
+                          </span>
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{matrixState?.dataPin || 'A0/D0'}</span>
+                        </div>
+                      </div>
+
+                      <form
+                        className="grid gap-4 rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm"
+                        onSubmit={applyMatrixControls}
+                      >
+                        <div>
+                          <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Panel Controls</div>
+                          <h2 className="mt-2 text-2xl font-bold text-slate-900">Color and brightness</h2>
+                          <p className="mt-2 text-sm text-slate-600">
+                            Pick a base color for the effect palette and tune output intensity from 0 to 255.
+                          </p>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
+                          <input
+                            type="color"
+                            value={matrixColor}
+                            onChange={(event) => setMatrixColor(event.target.value)}
+                            disabled={matrixBusy || !matrixState?.available}
+                            className="h-16 w-full cursor-pointer rounded-2xl border border-slate-300 bg-white p-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-24"
+                          />
+                          <div className="grid gap-2">
+                            <label className="text-[11px] font-medium uppercase tracking-[0.24em] text-slate-500">Brightness</label>
+                            <input
+                              type="range"
+                              min="0"
+                              max="255"
+                              step="1"
+                              value={matrixBrightness}
+                              onChange={(event) => setMatrixBrightness(event.target.value)}
+                              disabled={matrixBusy || !matrixState?.available}
+                              className="w-full accent-teal-600 disabled:opacity-60"
+                            />
+                            <div className="flex items-center justify-between text-sm text-slate-500">
+                              <span>{matrixColor}</span>
+                              <span>{matrixBrightness}/255</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={matrixBusy || !matrixState?.available}
+                          className="inline-flex min-h-[52px] items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {matrixBusy ? 'Applying Matrix…' : 'Apply Matrix Controls'}
+                        </button>
+                      </form>
+                    </div>
+
+                    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <StatusCard
+                        label="Matrix Driver"
+                        value={matrixState?.available ? 'Ready' : 'Unavailable'}
+                        tone={matrixState?.available ? 'online' : 'offline'}
+                      />
+                      <StatusCard
+                        label="Geometry"
+                        value={`${matrixState?.rows || 6} x ${matrixState?.columns || 10}`}
+                        tone="neutral"
+                      />
+                      <StatusCard
+                        label="Base Color"
+                        value={matrixState?.color || '#22c55e'}
+                        tone="neutral"
+                      />
+                      <StatusCard
+                        label="Active Effect"
+                        value={matrixState?.selectedPatternLabel || 'Loading'}
+                        tone="neutral"
+                      />
+                    </section>
+
+                    {matrixState?.error ? (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                        {matrixState.error}
+                      </div>
+                    ) : null}
+
+                    <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+                      <div className="rounded-[1.75rem] border border-slate-200 bg-slate-950 p-5 shadow-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-300">Live Preview</div>
+                            <h2 className="mt-2 text-2xl font-bold text-white">6x10 panel snapshot</h2>
+                          </div>
+                          <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-300">
+                            Refreshes every 0.7s
+                          </div>
+                        </div>
+
+                        <div
+                          className="mt-5 grid gap-1 rounded-[1.4rem] border border-white/10 bg-black/40 p-4"
+                          style={{ gridTemplateColumns: `repeat(${previewColumns}, minmax(0, 1fr))` }}
+                        >
+                          {previewFrame.map((color, index) => (
+                            <div
+                              key={index}
+                              className="aspect-square rounded-[0.7rem] border border-white/5"
+                              style={{
+                                backgroundColor: color,
+                                boxShadow: color === '#000000' ? 'inset 0 1px 1px rgba(255,255,255,0.05)' : `0 0 14px ${color}55`,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3">
+                        <MetricCard
+                          label="GPIO"
+                          value={matrixState?.gpio === null || matrixState?.gpio === undefined ? '—' : matrixState.gpio}
+                          hint={matrixState?.dataPin || 'A0/D0 data output'}
+                        />
+                        <MetricCard
+                          label="Pixels"
+                          value={matrixState?.pixelCount || 60}
+                          hint="WS2812B 1010 LEDs in a 6x10 grid"
+                        />
+                        <MetricCard
+                          label="Brightness"
+                          value={`${matrixState?.brightness ?? 0}/255`}
+                          hint="Applied after the effect frame is rendered"
+                        />
+                        <div className="rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm">
+                          <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Wiring Note</div>
+                          <h2 className="mt-2 text-2xl font-bold text-slate-900">Panel input</h2>
+                          <p className="mt-3 text-sm leading-6 text-slate-600">
+                            This firmware assumes the matrix data input is connected to <span className="font-medium text-slate-900">A0 / D0 / GPIO 0</span>.
+                            If the panel looks mirrored or snakes the wrong way, the firmware mapping can be adjusted later.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {matrixState?.patterns?.map((pattern, index) => {
+                        const isActive = pattern.id === matrixState.selectedPatternId;
+                        return (
+                          <button
+                            key={pattern.id}
+                            type="button"
+                            onClick={() => updateMatrixSettings({ patternId: pattern.id })}
+                            disabled={matrixBusy || !matrixState?.available}
+                            className={[
+                              'group min-h-[128px] rounded-3xl border px-4 py-4 text-left transition duration-200',
+                              'focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2',
+                              isActive
+                                ? 'border-slate-950 bg-slate-950 text-white shadow-panel'
+                                : 'border-white/70 bg-white/80 text-slate-900 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white',
+                              matrixBusy ? 'opacity-60' : '',
+                            ].join(' ')}
+                          >
+                            <div className="text-[11px] font-medium uppercase tracking-[0.28em] opacity-70">
+                              {String(index + 1).padStart(2, '0')}
+                            </div>
+                            <div className="mt-4 text-xl font-bold">{pattern.label}</div>
+                            <div className={`mt-3 text-sm ${isActive ? 'text-teal-300' : 'text-slate-500'}`}>
+                              {isActive ? 'Running on the panel' : 'Tap to activate'}
                             </div>
                           </button>
                         );

@@ -9,7 +9,7 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - 10 selectable LED patterns
 - a custom Morse-code message mode
 - a 6x10 WS2812B RGB matrix controller on `A0 / D0 / GPIO 0`
-- 18 selectable RGB matrix effects
+- 28 selectable RGB matrix effects
 - a BLE scanner
 - a device-status app with internal temperature and system telemetry
 - pattern persistence across power cycles
@@ -292,6 +292,16 @@ The matrix app exposes these effects for the 6x10 WS2812B panel:
 16. `static`
 17. `glitch`
 18. `lava`
+19. `spiral`
+20. `pong`
+21. `marquee`
+22. `equalizer`
+23. `radar`
+24. `orbit`
+25. `wavefront`
+26. `cross`
+27. `helix`
+28. `tiles`
 
 The active pattern is persisted in:
 

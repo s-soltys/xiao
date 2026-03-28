@@ -8,7 +8,7 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - a multi-app layout with Mood, Message, RGB Matrix, Bluetooth, and Device Info sections
 - a solid onboard status LED while the device is powered
 - a 6x10 WS2812B RGB matrix controller on `A0 / D0 / GPIO 0`
-- 30 selectable RGB matrix effects including mood icons and scrolling text
+- 40 selectable RGB matrix effects including mood icons and scrolling text
 - a BLE scanner
 - a device-status app with internal temperature and system telemetry
 - matrix effect, brightness, base color, mood, and message persistence across power cycles
@@ -29,7 +29,7 @@ On boot, the firmware:
 - starts mDNS and advertises the device as `xiao.local`
 - keeps the RGB matrix running in a non-blocking loop while the onboard LED stays on
 
-The mood app lets you switch between handmade emoji-style matrix faces instantly.
+The mood app lets you switch between single-color matrix mood icons instantly.
 The message app lets you save a short text message that scrolls from right to left across the panel in a loop.
 The matrix app lets you switch RGB panel effects instantly, adjust brightness, pick a base color for color-driven effects, and correct the physical matrix mapping when the panel wiring order differs.
 
@@ -364,8 +364,18 @@ The matrix app exposes these effects for the 6x10 WS2812B panel:
 26. `cross`
 27. `helix`
 28. `tiles`
-29. `mood`
-30. `message`
+29. `pixel-spectrum`
+30. `raster-trace`
+31. `zigzag-trace`
+32. `row-spectrum`
+33. `column-spectrum`
+34. `row-fill`
+35. `column-fill`
+36. `diagonal-wipe`
+37. `spiral-trace`
+38. `border-fill`
+39. `mood`
+40. `message`
 
 The Mood app ships with these 10 saved mood ids:
 

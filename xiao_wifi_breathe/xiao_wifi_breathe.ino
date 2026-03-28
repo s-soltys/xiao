@@ -63,7 +63,7 @@ constexpr char kDefaultMatrixMoodId[] = "happy";
 constexpr char kDefaultMatrixMessage[] = "HELLO";
 constexpr int kJsonFieldMissing = -1000;
 constexpr size_t kMaxMatrixMessageLength = 64;
-constexpr uint8_t kMatrixGlyphWidth = 5;
+constexpr uint8_t kMatrixGlyphWidth = 3;
 constexpr uint8_t kMatrixGlyphSpacing = 1;
 constexpr uint16_t kMatrixMessageScrollMs = 110;
 
@@ -221,6 +221,16 @@ const MatrixPatternDefinition kMatrixPatterns[] = {
   {"cross", "Cross Pulse", true},
   {"helix", "Helix Bands", true},
   {"tiles", "Tile Shift", true},
+  {"pixel-spectrum", "Pixel Spectrum", true},
+  {"raster-trace", "Raster Trace", true},
+  {"zigzag-trace", "Zigzag Trace", true},
+  {"row-spectrum", "Row Spectrum", true},
+  {"column-spectrum", "Column Spectrum", true},
+  {"row-fill", "Row Fill", true},
+  {"column-fill", "Column Fill", true},
+  {"diagonal-wipe", "Diagonal Wipe", true},
+  {"spiral-trace", "Spiral Trace", true},
+  {"border-fill", "Border Fill", true},
   {kMatrixMoodPatternId, "Mood Icon", false},
   {kMatrixMessagePatternId, "Scrolling Message", true},
 };
@@ -233,61 +243,61 @@ const MatrixMappingDefinition kMatrixMappings[] = {
 };
 
 const MoodDefinition kMoods[] = {
-  {"happy", "Happy", {".DDwwwwDD.", "DnnNNNNnnD", "nNDNnnNDNn", "nNNPnnPNNn", "nNNrrrrNNn", ".nnRRRRnn."}},
-  {"sad", "Sad", {".DDwwwwDD.", "DnnNNNNnnD", "nNDNnnNDNn", "nNNnnnnBNn", "nNNP..PNNn", ".RnnnnnnR."}},
-  {"excited", "Excited", {".yywwwwyy.", "yNNYYYYNNy", "YNWNYYNWNY", "YYYPYYPYYY", "YYRrrrrRYY", ".yyRPPRyy."}},
-  {"cool", "Cool", {".DDDDDDDD.", "DooOOOOooD", "oDDDDDDDDo", "oOOooooOOo", "oOOWWWOOOo", ".ooRRRRoo."}},
-  {"love", "Love", {".DDwwwwDD.", "DnnNNNNnnD", "nRRNnnNRRn", "nNNPnnPNNn", "nNNppppNNn", ".nnPPPPnn."}},
-  {"sleepy", "Sleepy", {".BBBBBBbb.", "BnnNNNNnnB", "nNDDnnDDNn", "nNNnnnnNNn", "nNNnPPnNNn", ".bb....bb."}},
-  {"angry", "Angry", {".rrDDDDrr.", "rooOOOOoor", "oDrOnnOrDo", "oOOnnnnOOo", "oOORRRROOo", ".Rr....rR."}},
-  {"surprised", "Surprised", {".yywwwwyy.", "yNNYYYYNNy", "YNDNYYNDNY", "YYYbDDbYYY", "YYYbDDbYYY", ".yyRRRRyy."}},
-  {"winky", "Winky", {".DDwwwwDD.", "DnnNNNNnnD", "nNDNnnDDNn", "nNNPnnPNNn", "nNNrrrrNNn", ".nnRPRRnn."}},
-  {"silly", "Silly", {".DDwwwwDD.", "DnnNNNNnnD", "nNDNnnNDNn", "nNNPnnPNNn", "nNNrrrrNNn", ".nnPppPnn."}},
+  {"happy", "Happy", {"...XXXX...", "..X....X..", ".X.X..X.X.", ".X......X.", "..X.XX.X..", "...XXXX..."}},
+  {"sad", "Sad", {"...XXXX...", "..X....X..", ".X.X..X.X.", ".X......X.", "...X..X...", "..X.XX.X.."}},
+  {"excited", "Excited", {"...XXXX...", ".XX....XX.", ".X.X..X.X.", ".X..XX..X.", "..XX..XX..", "...XXXX..."}},
+  {"cool", "Cool", {"...XXXX...", "..XXXXXX..", ".X......X.", ".X.XXXX.X.", "..X....X..", "...XXXX..."}},
+  {"love", "Love", {"...XXXX...", "..XX..XX..", ".X..XX..X.", ".X......X.", "..X.XX.X..", "...XXXX..."}},
+  {"sleepy", "Sleepy", {"...XXXX...", "..X....X..", ".X.XX..XX.", ".X......X.", "..X.XX.X..", "...XXXX..."}},
+  {"angry", "Angry", {"...XXXX...", ".XX....XX.", ".X.X..X.X.", ".X..XX..X.", "...X..X...", "..X....X.."}},
+  {"surprised", "Surprised", {"...XXXX...", "..X....X..", ".X.X..X.X.", ".X..XX..X.", "..X....X..", "...XXXX..."}},
+  {"winky", "Winky", {"...XXXX...", "..X....X..", ".X....X.X.", ".X......X.", "..X.XX.X..", "...XXXX..."}},
+  {"silly", "Silly", {"...XXXX...", "..X....X..", ".X.X..X.X.", ".X......X.", "..X.X..X..", "...X..X..."}},
 };
 
 const MatrixGlyph kMatrixGlyphs[] = {
-  {' ', {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-  {'-', {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00}},
-  {'.', {0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C}},
-  {',', {0x00, 0x00, 0x00, 0x0C, 0x04, 0x08}},
-  {'!', {0x04, 0x04, 0x04, 0x04, 0x00, 0x04}},
-  {'?', {0x0E, 0x11, 0x02, 0x04, 0x00, 0x04}},
-  {'0', {0x0E, 0x13, 0x15, 0x19, 0x11, 0x0E}},
-  {'1', {0x04, 0x0C, 0x04, 0x04, 0x04, 0x0E}},
-  {'2', {0x0E, 0x11, 0x02, 0x04, 0x08, 0x1F}},
-  {'3', {0x1E, 0x01, 0x06, 0x01, 0x11, 0x0E}},
-  {'4', {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02}},
-  {'5', {0x1F, 0x10, 0x1E, 0x01, 0x11, 0x0E}},
-  {'6', {0x0E, 0x10, 0x1E, 0x11, 0x11, 0x0E}},
-  {'7', {0x1F, 0x02, 0x04, 0x08, 0x08, 0x08}},
-  {'8', {0x0E, 0x11, 0x0E, 0x11, 0x11, 0x0E}},
-  {'9', {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x0E}},
-  {'A', {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11}},
-  {'B', {0x1E, 0x11, 0x1E, 0x11, 0x11, 0x1E}},
-  {'C', {0x0E, 0x11, 0x10, 0x10, 0x11, 0x0E}},
-  {'D', {0x1E, 0x11, 0x11, 0x11, 0x11, 0x1E}},
-  {'E', {0x1F, 0x10, 0x1E, 0x10, 0x10, 0x1F}},
-  {'F', {0x1F, 0x10, 0x1E, 0x10, 0x10, 0x10}},
-  {'G', {0x0E, 0x11, 0x10, 0x17, 0x11, 0x0E}},
-  {'H', {0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}},
-  {'I', {0x1F, 0x04, 0x04, 0x04, 0x04, 0x1F}},
-  {'J', {0x01, 0x01, 0x01, 0x11, 0x11, 0x0E}},
-  {'K', {0x11, 0x12, 0x1C, 0x12, 0x11, 0x11}},
-  {'L', {0x10, 0x10, 0x10, 0x10, 0x10, 0x1F}},
-  {'M', {0x11, 0x1B, 0x15, 0x11, 0x11, 0x11}},
-  {'N', {0x11, 0x19, 0x15, 0x13, 0x11, 0x11}},
-  {'O', {0x0E, 0x11, 0x11, 0x11, 0x11, 0x0E}},
-  {'P', {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10}},
-  {'Q', {0x0E, 0x11, 0x11, 0x15, 0x12, 0x0D}},
-  {'R', {0x1E, 0x11, 0x11, 0x1E, 0x12, 0x11}},
-  {'S', {0x0F, 0x10, 0x0E, 0x01, 0x11, 0x0E}},
-  {'T', {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04}},
-  {'U', {0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}},
-  {'V', {0x11, 0x11, 0x11, 0x11, 0x0A, 0x04}},
-  {'W', {0x11, 0x11, 0x15, 0x15, 0x1B, 0x11}},
-  {'X', {0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11}},
-  {'Y', {0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}},
-  {'Z', {0x1F, 0x02, 0x04, 0x08, 0x10, 0x1F}},
+  {' ', {0x0, 0x0, 0x0, 0x0, 0x0, 0x0}},
+  {'-', {0x0, 0x0, 0x7, 0x0, 0x0, 0x0}},
+  {'.', {0x0, 0x0, 0x0, 0x0, 0x0, 0x2}},
+  {',', {0x0, 0x0, 0x0, 0x0, 0x2, 0x4}},
+  {'!', {0x0, 0x2, 0x2, 0x2, 0x0, 0x2}},
+  {'?', {0x0, 0x6, 0x1, 0x2, 0x0, 0x2}},
+  {'0', {0x0, 0x7, 0x5, 0x5, 0x5, 0x7}},
+  {'1', {0x0, 0x2, 0x6, 0x2, 0x2, 0x7}},
+  {'2', {0x0, 0x7, 0x1, 0x7, 0x4, 0x7}},
+  {'3', {0x0, 0x7, 0x1, 0x7, 0x1, 0x7}},
+  {'4', {0x0, 0x5, 0x5, 0x7, 0x1, 0x1}},
+  {'5', {0x0, 0x7, 0x4, 0x7, 0x1, 0x7}},
+  {'6', {0x0, 0x7, 0x4, 0x7, 0x5, 0x7}},
+  {'7', {0x0, 0x7, 0x1, 0x2, 0x2, 0x2}},
+  {'8', {0x0, 0x7, 0x5, 0x7, 0x5, 0x7}},
+  {'9', {0x0, 0x7, 0x5, 0x7, 0x1, 0x7}},
+  {'A', {0x0, 0x2, 0x5, 0x7, 0x5, 0x5}},
+  {'B', {0x0, 0x6, 0x5, 0x6, 0x5, 0x6}},
+  {'C', {0x0, 0x3, 0x4, 0x4, 0x4, 0x3}},
+  {'D', {0x0, 0x6, 0x5, 0x5, 0x5, 0x6}},
+  {'E', {0x0, 0x7, 0x4, 0x6, 0x4, 0x7}},
+  {'F', {0x0, 0x7, 0x4, 0x6, 0x4, 0x4}},
+  {'G', {0x0, 0x3, 0x4, 0x5, 0x5, 0x3}},
+  {'H', {0x0, 0x5, 0x5, 0x7, 0x5, 0x5}},
+  {'I', {0x0, 0x7, 0x2, 0x2, 0x2, 0x7}},
+  {'J', {0x0, 0x1, 0x1, 0x1, 0x5, 0x2}},
+  {'K', {0x0, 0x5, 0x5, 0x6, 0x5, 0x5}},
+  {'L', {0x0, 0x4, 0x4, 0x4, 0x4, 0x7}},
+  {'M', {0x0, 0x5, 0x7, 0x7, 0x5, 0x5}},
+  {'N', {0x0, 0x5, 0x7, 0x7, 0x7, 0x5}},
+  {'O', {0x0, 0x2, 0x5, 0x5, 0x5, 0x2}},
+  {'P', {0x0, 0x6, 0x5, 0x6, 0x4, 0x4}},
+  {'Q', {0x0, 0x2, 0x5, 0x5, 0x7, 0x3}},
+  {'R', {0x0, 0x6, 0x5, 0x6, 0x5, 0x5}},
+  {'S', {0x0, 0x3, 0x4, 0x2, 0x1, 0x6}},
+  {'T', {0x0, 0x7, 0x2, 0x2, 0x2, 0x2}},
+  {'U', {0x0, 0x5, 0x5, 0x5, 0x5, 0x7}},
+  {'V', {0x0, 0x5, 0x5, 0x5, 0x5, 0x2}},
+  {'W', {0x0, 0x5, 0x5, 0x7, 0x7, 0x5}},
+  {'X', {0x0, 0x5, 0x5, 0x2, 0x5, 0x5}},
+  {'Y', {0x0, 0x5, 0x5, 0x2, 0x2, 0x2}},
+  {'Z', {0x0, 0x7, 0x1, 0x2, 0x4, 0x7}},
 };
 
 WebServer webServer(kHttpPort);
@@ -444,6 +454,24 @@ void setMatrixLinearPixel(size_t index, const RgbColor &color) {
   }
 
   matrixFrame[index] = color;
+}
+
+void rowMajorStepToCoord(size_t step, uint8_t &row, uint8_t &column) {
+  step %= kMatrixLedCount;
+  row = static_cast<uint8_t>(step / kMatrixColumns);
+  column = static_cast<uint8_t>(step % kMatrixColumns);
+}
+
+void zigzagStepToCoord(size_t step, uint8_t &row, uint8_t &column) {
+  step %= kMatrixLedCount;
+  row = static_cast<uint8_t>(step / kMatrixColumns);
+  const uint8_t offset = static_cast<uint8_t>(step % kMatrixColumns);
+  if ((row & 1U) == 0) {
+    column = offset;
+    return;
+  }
+
+  column = static_cast<uint8_t>(kMatrixColumns - 1 - offset);
 }
 
 RgbColor warmColor(uint8_t heat) {
@@ -1202,54 +1230,14 @@ RgbColor matrixPreviewColorAt(uint8_t row, uint8_t column) {
   return scaleColor(matrixFrame[matrixPixelIndex(row, column)], matrixBrightness);
 }
 
-RgbColor moodPixelColor(char token) {
-  switch (token) {
-    case 'Y':
-      return makeColor(255, 224, 102);
-    case 'y':
-      return makeColor(176, 112, 24);
-    case 'N':
-      return makeColor(255, 206, 168);
-    case 'n':
-      return makeColor(140, 78, 48);
-    case 'O':
-      return makeColor(255, 162, 82);
-    case 'o':
-      return makeColor(168, 88, 32);
-    case 'R':
-      return makeColor(255, 54, 78);
-    case 'r':
-      return makeColor(128, 18, 42);
-    case 'P':
-      return makeColor(255, 126, 196);
-    case 'p':
-      return makeColor(168, 40, 108);
-    case 'B':
-      return makeColor(92, 194, 255);
-    case 'b':
-      return makeColor(18, 64, 176);
-    case 'G':
-      return makeColor(120, 248, 126);
-    case 'g':
-      return makeColor(24, 116, 48);
-    case 'W':
-      return makeColor(255, 255, 255);
-    case 'w':
-      return makeColor(255, 244, 200);
-    case 'D':
-      return makeColor(26, 28, 32);
-    default:
-      return makeColor(0, 0, 0);
-  }
-}
-
 void drawMood(const MoodDefinition &mood) {
   clearMatrixFrame();
+  const RgbColor moodColor = blendColors(matrixBaseColor, makeColor(255, 255, 255), 88);
 
   for (uint8_t row = 0; row < kMatrixRows; ++row) {
     const char *pixels = mood.rows[row];
     for (uint8_t column = 0; column < kMatrixColumns; ++column) {
-      setMatrixPixel(row, column, moodPixelColor(pixels[column]));
+      setMatrixPixel(row, column, pixels[column] == '.' ? makeColor(0, 0, 0) : moodColor);
     }
   }
 }
@@ -1834,6 +1822,138 @@ void renderMatrixTiles(uint32_t now) {
   }
 }
 
+void renderMatrixPixelSpectrum(uint32_t now) {
+  clearMatrixFrame();
+
+  const uint32_t tick = now / 18U;
+  const size_t pixel = static_cast<size_t>((tick / 256U) % kMatrixLedCount);
+  const uint8_t hue = static_cast<uint8_t>(tick & 0xFFU);
+  uint8_t row = 0;
+  uint8_t column = 0;
+  rowMajorStepToCoord(pixel, row, column);
+  setMatrixPixel(row, column, colorWheel(hue));
+}
+
+void renderMatrixRasterTrace(uint32_t now) {
+  clearMatrixFrame();
+
+  const size_t head = static_cast<size_t>(now / 55U) % kMatrixLedCount;
+  for (uint8_t tail = 0; tail < 10; ++tail) {
+    const size_t step = (head + kMatrixLedCount - tail) % kMatrixLedCount;
+    uint8_t row = 0;
+    uint8_t column = 0;
+    rowMajorStepToCoord(step, row, column);
+    const uint8_t hue = static_cast<uint8_t>((now / 12U) + tail * 22U);
+    setMatrixPixel(row, column, scaleColor(colorWheel(hue), static_cast<uint8_t>(255 - tail * 20U)));
+  }
+}
+
+void renderMatrixZigzagTrace(uint32_t now) {
+  fillMatrixFrame(scaleColor(matrixBaseColor, 6));
+
+  const size_t head = static_cast<size_t>(now / 60U) % kMatrixLedCount;
+  for (uint8_t tail = 0; tail < 12; ++tail) {
+    const size_t step = (head + kMatrixLedCount - tail) % kMatrixLedCount;
+    uint8_t row = 0;
+    uint8_t column = 0;
+    zigzagStepToCoord(step, row, column);
+    const uint8_t hue = static_cast<uint8_t>((now / 14U) + step * 5U);
+    setMatrixPixel(row, column, scaleColor(colorWheel(hue), static_cast<uint8_t>(255 - tail * 16U)));
+  }
+}
+
+void renderMatrixRowSpectrum(uint32_t now) {
+  clearMatrixFrame();
+
+  const uint32_t tick = now / 16U;
+  const uint8_t activeRow = static_cast<uint8_t>((tick / 256U) % kMatrixRows);
+  const uint8_t baseHue = static_cast<uint8_t>(tick & 0xFFU);
+  for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+    setMatrixPixel(activeRow, column, colorWheel(static_cast<uint8_t>(baseHue + column * 18U)));
+  }
+}
+
+void renderMatrixColumnSpectrum(uint32_t now) {
+  clearMatrixFrame();
+
+  const uint32_t tick = now / 16U;
+  const uint8_t activeColumn = static_cast<uint8_t>((tick / 256U) % kMatrixColumns);
+  const uint8_t baseHue = static_cast<uint8_t>(tick & 0xFFU);
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    setMatrixPixel(row, activeColumn, colorWheel(static_cast<uint8_t>(baseHue + row * 28U)));
+  }
+}
+
+void renderMatrixRowFill(uint32_t now) {
+  clearMatrixFrame();
+
+  const uint8_t phase = static_cast<uint8_t>((now / 220U) % (kMatrixRows * 2U));
+  const uint8_t filledRows = phase < kMatrixRows ? static_cast<uint8_t>(phase + 1U) : static_cast<uint8_t>((kMatrixRows * 2U) - phase - 1U);
+  for (uint8_t row = 0; row < filledRows; ++row) {
+    const RgbColor rowColor = blendColors(matrixBaseColor, colorWheel(static_cast<uint8_t>(row * 36U + now / 18U)), 110);
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      setMatrixPixel(static_cast<uint8_t>(kMatrixRows - 1 - row), column, rowColor);
+    }
+  }
+}
+
+void renderMatrixColumnFill(uint32_t now) {
+  clearMatrixFrame();
+
+  const uint8_t phase = static_cast<uint8_t>((now / 180U) % (kMatrixColumns * 2U));
+  const uint8_t filledColumns = phase < kMatrixColumns ? static_cast<uint8_t>(phase + 1U) : static_cast<uint8_t>((kMatrixColumns * 2U) - phase - 1U);
+  for (uint8_t column = 0; column < filledColumns; ++column) {
+    const RgbColor columnColor = blendColors(matrixBaseColor, colorWheel(static_cast<uint8_t>(column * 20U + now / 14U)), 128);
+    for (uint8_t row = 0; row < kMatrixRows; ++row) {
+      setMatrixPixel(row, column, columnColor);
+    }
+  }
+}
+
+void renderMatrixDiagonalWipe(uint32_t now) {
+  fillMatrixFrame(scaleColor(matrixBaseColor, 5));
+
+  const int stripe = static_cast<int>((now / 75U) % (kMatrixColumns + kMatrixRows - 1U)) - static_cast<int>(kMatrixRows - 1U);
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const int distance = abs(static_cast<int>(column) - static_cast<int>(row) - stripe);
+      if (distance == 0) {
+        setMatrixPixel(row, column, makeColor(255, 255, 255));
+      } else if (distance == 1) {
+        setMatrixPixel(row, column, colorWheel(static_cast<uint8_t>(now / 10U + column * 18U)));
+      }
+    }
+  }
+}
+
+void renderMatrixSpiralTrace(uint32_t now) {
+  clearMatrixFrame();
+
+  const size_t head = static_cast<size_t>(now / 70U) % kMatrixLedCount;
+  for (uint8_t tail = 0; tail < 14; ++tail) {
+    const size_t step = (head + kMatrixLedCount - tail) % kMatrixLedCount;
+    uint8_t row = 0;
+    uint8_t column = 0;
+    spiralStepToCoord(step, row, column);
+    const uint8_t hue = static_cast<uint8_t>((step * 13U) + (now / 15U));
+    setMatrixPixel(row, column, scaleColor(colorWheel(hue), static_cast<uint8_t>(255 - tail * 16U)));
+  }
+}
+
+void renderMatrixBorderFill(uint32_t now) {
+  fillMatrixFrame(scaleColor(matrixBaseColor, 4));
+
+  const size_t perimeter = borderPixelCount();
+  const size_t phase = static_cast<size_t>(now / 90U) % (perimeter * 2U);
+  const size_t filled = phase < perimeter ? (phase + 1U) : ((perimeter * 2U) - phase - 1U);
+  for (size_t step = 0; step < filled; ++step) {
+    uint8_t row = 0;
+    uint8_t column = 0;
+    borderStepToCoord(step, row, column);
+    setMatrixPixel(row, column, colorWheel(static_cast<uint8_t>(now / 11U + step * 7U)));
+  }
+}
+
 void renderMatrixFrame(uint32_t now) {
   if (activeMatrixPattern == nullptr) {
     renderMatrixOff();
@@ -1896,6 +2016,26 @@ void renderMatrixFrame(uint32_t now) {
     renderMatrixHelix(now);
   } else if (strcmp(activeMatrixPattern->id, "tiles") == 0) {
     renderMatrixTiles(now);
+  } else if (strcmp(activeMatrixPattern->id, "pixel-spectrum") == 0) {
+    renderMatrixPixelSpectrum(now);
+  } else if (strcmp(activeMatrixPattern->id, "raster-trace") == 0) {
+    renderMatrixRasterTrace(now);
+  } else if (strcmp(activeMatrixPattern->id, "zigzag-trace") == 0) {
+    renderMatrixZigzagTrace(now);
+  } else if (strcmp(activeMatrixPattern->id, "row-spectrum") == 0) {
+    renderMatrixRowSpectrum(now);
+  } else if (strcmp(activeMatrixPattern->id, "column-spectrum") == 0) {
+    renderMatrixColumnSpectrum(now);
+  } else if (strcmp(activeMatrixPattern->id, "row-fill") == 0) {
+    renderMatrixRowFill(now);
+  } else if (strcmp(activeMatrixPattern->id, "column-fill") == 0) {
+    renderMatrixColumnFill(now);
+  } else if (strcmp(activeMatrixPattern->id, "diagonal-wipe") == 0) {
+    renderMatrixDiagonalWipe(now);
+  } else if (strcmp(activeMatrixPattern->id, "spiral-trace") == 0) {
+    renderMatrixSpiralTrace(now);
+  } else if (strcmp(activeMatrixPattern->id, "border-fill") == 0) {
+    renderMatrixBorderFill(now);
   } else if (strcmp(activeMatrixPattern->id, kMatrixMoodPatternId) == 0) {
     renderMatrixMood();
   } else if (strcmp(activeMatrixPattern->id, kMatrixMessagePatternId) == 0) {

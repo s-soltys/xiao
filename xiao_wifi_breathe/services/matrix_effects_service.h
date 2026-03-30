@@ -146,6 +146,68 @@ RgbColor sweepEventColor(uint32_t seed) {
   return blendColors(colorWheel(hue), colorWheel(static_cast<uint8_t>(hue + 96U)), 56);
 }
 
+void renderDiagonalSpectrumSweep(uint8_t directionIndex, float progress, const RgbColor &sweepColor, const RgbColor &coreColor) {
+  const float maxColumn = static_cast<float>(kMatrixColumns - 1U);
+  const float maxRow = static_cast<float>(kMatrixRows - 1U);
+  const float diagonalOverscan = 2.6f;
+  float entryX = 0.0f;
+  float entryY = 0.0f;
+  float exitX = maxColumn;
+  float exitY = maxRow;
+
+  if (directionIndex == 5U) {
+    entryX = maxColumn;
+    entryY = maxRow;
+    exitX = 0.0f;
+    exitY = 0.0f;
+  } else if (directionIndex == 6U) {
+    entryX = maxColumn;
+    entryY = 0.0f;
+    exitX = 0.0f;
+    exitY = maxRow;
+  } else if (directionIndex == 7U) {
+    entryX = 0.0f;
+    entryY = maxRow;
+    exitX = maxColumn;
+    exitY = 0.0f;
+  }
+
+  const float deltaX = exitX - entryX;
+  const float deltaY = exitY - entryY;
+  const float motionLength = sqrtf(deltaX * deltaX + deltaY * deltaY);
+  const float motionX = deltaX / motionLength;
+  const float motionY = deltaY / motionLength;
+  const float startX = entryX - motionX * diagonalOverscan;
+  const float startY = entryY - motionY * diagonalOverscan;
+  const float endX = exitX + motionX * diagonalOverscan;
+  const float endY = exitY + motionY * diagonalOverscan;
+  const float centerX = startX + (endX - startX) * progress;
+  const float centerY = startY + (endY - startY) * progress;
+  const float segmentHalfLength = 4.2f;
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float relX = static_cast<float>(column) - centerX;
+      const float relY = static_cast<float>(row) - centerY;
+      const float axial = relX * motionX + relY * motionY;
+      const float axialDistance = fabsf(axial);
+      const float lateral = fabsf((-relX * motionY) + (relY * motionX));
+
+      if (lateral < 0.32f && axialDistance <= segmentHalfLength) {
+        const float endFade = 1.0f - min(axialDistance / segmentHalfLength, 1.0f);
+        const RgbColor highlight = blendColors(coreColor, makeColor(255, 255, 255), static_cast<uint8_t>(72.0f * endFade));
+        setMatrixPixel(row, column, highlight);
+      } else if (lateral < 0.66f && axialDistance <= segmentHalfLength + 0.55f) {
+        const float endFade = 1.0f - min(axialDistance / (segmentHalfLength + 0.55f), 1.0f);
+        setMatrixPixel(row, column, scaleColor(sweepColor, static_cast<uint8_t>(96.0f + endFade * 126.0f)));
+      } else if (lateral < 0.98f && axialDistance <= segmentHalfLength + 0.95f) {
+        const float haloFade = 1.0f - min((lateral - 0.66f) / 0.32f, 1.0f);
+        setMatrixPixel(row, column, scaleColor(sweepColor, static_cast<uint8_t>(18.0f + haloFade * 52.0f)));
+      }
+    }
+  }
+}
+
 void renderMatrixSolid() {
   fillMatrixFrame(matrixSolidGlowColor());
 }
@@ -230,9 +292,19 @@ void renderMatrixSpectrumScan(uint32_t now) {
   }
 
   const uint32_t seed = hash32(eventIndex * 1181U + 97U);
+  const uint8_t directionIndex = static_cast<uint8_t>(seed & 0x7U);
+  const float progress = static_cast<float>(local) / static_cast<float>(activeMs);
+  const RgbColor sweepColor = sweepEventColor(seed);
+  const RgbColor coreColor = blendColors(sweepColor, makeColor(255, 255, 255), 180);
+
+  if (directionIndex >= 4U) {
+    renderDiagonalSpectrumSweep(directionIndex, progress, sweepColor, coreColor);
+    return;
+  }
+
   float directionX = 1.0f;
   float directionY = 0.0f;
-  randomSweepDirection(static_cast<uint8_t>(seed & 0x7U), directionX, directionY);
+  randomSweepDirection(directionIndex, directionX, directionY);
 
   const float maxColumn = static_cast<float>(kMatrixColumns - 1U);
   const float maxRow = static_cast<float>(kMatrixRows - 1U);
@@ -255,10 +327,7 @@ void renderMatrixSpectrumScan(uint32_t now) {
   }
 
   const float overscan = 2.8f;
-  const float progress = static_cast<float>(local) / static_cast<float>(activeMs);
   const float headProjection = (minProjection - overscan) + progress * ((maxProjection - minProjection) + overscan * 2.0f);
-  const RgbColor sweepColor = sweepEventColor(seed);
-  const RgbColor coreColor = blendColors(sweepColor, makeColor(255, 255, 255), 180);
 
   for (uint8_t row = 0; row < kMatrixRows; ++row) {
     for (uint8_t column = 0; column < kMatrixColumns; ++column) {

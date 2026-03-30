@@ -35,8 +35,12 @@ The matrix app lets you switch RGB panel effects instantly, adjust brightness, p
 
 ## Project Layout
 
-- [xiao_wifi_breathe/xiao_wifi_breathe.ino](xiao_wifi_breathe/xiao_wifi_breathe.ino): main firmware, pattern engine, Wi-Fi, HTTP API, mDNS, persistence
-- [xiao_wifi_breathe/web_app.h](xiao_wifi_breathe/web_app.h): inline HTML page with React and Tailwind loaded from CDN
+- [xiao_wifi_breathe/xiao_wifi_breathe.ino](xiao_wifi_breathe/xiao_wifi_breathe.ino): thin firmware entrypoint that wires together catalogs, services, apps, and runtime setup
+- [xiao_wifi_breathe/apps/](xiao_wifi_breathe/apps): per-app HTTP handlers and JSON builders plus the central app registry
+- [xiao_wifi_breathe/services/](xiao_wifi_breathe/services): shared platform services for LED patterns, matrix rendering, BLE, Wi-Fi, and HTTP helpers
+- [xiao_wifi_breathe/catalogs/](xiao_wifi_breathe/catalogs): static pattern, mapping, mood, and glyph tables
+- [xiao_wifi_breathe/ui/](xiao_wifi_breathe/ui): embedded frontend chunks for the app shell and per-app panels
+- [xiao_wifi_breathe/web_app.h](xiao_wifi_breathe/web_app.h): HTML streaming wrapper that serves the chunked embedded frontend
 - [xiao_wifi_breathe/wifi_config.example.h](xiao_wifi_breathe/wifi_config.example.h): Wi-Fi config template
 - [xiao_wifi_breathe/wifi_config.h](xiao_wifi_breathe/wifi_config.h): local ignored Wi-Fi credentials file
 - [.arduino-cli.yaml](.arduino-cli.yaml): local Arduino CLI config for this workspace
@@ -107,9 +111,11 @@ The browser loads:
 
 The device serves the HTML shell itself, but the browser still needs internet access for those CDN assets.
 
+The frontend is now split into an app shell and per-app panels, and the shell discovers its visible tabs from `GET /api/apps` instead of hardcoding the app list in one monolithic component.
+
 ## Apps
 
-The web UI is split into five apps:
+The web UI is split into five visible apps:
 
 - `Mood App`: shows one saved mood icon on the RGB matrix
 - `Message App`: scrolls a saved text message right-to-left on the RGB matrix
@@ -117,11 +123,35 @@ The web UI is split into five apps:
 - `Bluetooth Scanner`: scans nearby BLE advertisers and shows scan results
 - `Device Info`: shows internal chip temperature and device telemetry
 
+The firmware also keeps the legacy onboard LED state routes (`/api/state`, `/api/pattern`, `/api/morse`) as system endpoints even though they are not shown as a visible tab in the current UI.
+
 ## HTTP API
 
 ### `GET /`
 
 Returns the web app HTML.
+
+### `GET /api/apps`
+
+Returns the ordered app registry used by the frontend shell.
+
+Example:
+
+```json
+{
+  "apps": [
+    {
+      "id": "matrix",
+      "label": "RGB Matrix",
+      "description": "Control the 6x10 WS2812B panel on A0/D0 with animated effects.",
+      "routeBase": "/api/matrix",
+      "stateRoute": "/api/matrix",
+      "actionRoute": "/api/matrix",
+      "available": true
+    }
+  ]
+}
+```
 
 ### `GET /api/state`
 
@@ -330,7 +360,7 @@ The firmware exposes these 10 patterns:
 9. `ramp-pulse`
 10. `strobe`
 
-In addition, the web UI supports a custom `morse-text` mode that is activated by submitting text through the Morse input field.
+In addition, the firmware supports a custom `morse-text` mode that is activated by submitting text to `POST /api/morse`.
 
 ## RGB Matrix Effects
 

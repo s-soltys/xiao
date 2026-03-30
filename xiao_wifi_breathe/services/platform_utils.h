@@ -244,6 +244,38 @@ int extractJsonIntField(const String &body, const char *fieldName) {
   return body.substring(valueStart, valueEnd).toInt();
 }
 
+int extractJsonBoolField(const String &body, const char *fieldName) {
+  const String quotedField = String('"') + fieldName + '"';
+  const int fieldIndex = body.indexOf(quotedField);
+  if (fieldIndex < 0) {
+    return kJsonBoolFieldMissing;
+  }
+
+  const int colonIndex = body.indexOf(':', fieldIndex + quotedField.length());
+  if (colonIndex < 0) {
+    return kJsonBoolFieldMissing;
+  }
+
+  int valueStart = colonIndex + 1;
+  while (valueStart < body.length() && isspace(static_cast<unsigned char>(body.charAt(valueStart)))) {
+    ++valueStart;
+  }
+
+  if (valueStart >= body.length()) {
+    return kJsonBoolFieldMissing;
+  }
+
+  if (body.startsWith("true", valueStart)) {
+    return 1;
+  }
+
+  if (body.startsWith("false", valueStart)) {
+    return 0;
+  }
+
+  return kJsonBoolFieldMissing;
+}
+
 void setLedBrightness(uint8_t brightness) {
   const uint8_t pwmValue = kLedActiveLow ? (kPwmMax - brightness) : brightness;
   analogWrite(kLedPin, pwmValue);

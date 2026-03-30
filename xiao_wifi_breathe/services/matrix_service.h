@@ -193,7 +193,7 @@ void writeMatrixFrame() {
   }
 
   for (size_t pixelIndex = 0; pixelIndex < kMatrixLedCount; ++pixelIndex) {
-    const RgbColor scaled = scaleColor(matrixFrame[pixelIndex], matrixBrightness);
+    const RgbColor scaled = matrixEnabled ? scaleColor(matrixFrame[pixelIndex], matrixBrightness) : makeColor(0, 0, 0);
     matrixStrip.setPixelColor(pixelIndex, matrixStrip.Color(scaled.red, scaled.green, scaled.blue));
   }
 
@@ -338,7 +338,9 @@ String normalizeMatrixMessage(const String &rawText) {
 
 void persistMatrixState() {
   preferences.putString(kMatrixPatternPreferenceKey, activeMatrixPattern->id);
+  preferences.putBool(kMatrixEnabledPreferenceKey, matrixEnabled);
   preferences.putUChar(kMatrixBrightnessPreferenceKey, matrixBrightness);
+  preferences.putUChar(kMatrixAnimationSpeedPreferenceKey, matrixAnimationSpeed);
   preferences.putString(kMatrixColorPreferenceKey, matrixColorHex);
   preferences.putString(kMatrixMappingPreferenceKey, activeMatrixMapping->id);
 }
@@ -379,12 +381,40 @@ bool updateMatrixColor(const String &colorHex, bool persistSelection) {
   return true;
 }
 
+bool updateMatrixEnabled(bool enabled, bool persistSelection) {
+  matrixEnabled = enabled;
+  matrixFrameDirty = true;
+  lastMatrixFrameAtMs = 0;
+
+  if (persistSelection) {
+    persistMatrixState();
+  }
+
+  return true;
+}
+
 bool updateMatrixBrightness(int brightness, bool persistSelection) {
   if (brightness < 0 || brightness > 255) {
     return false;
   }
 
   matrixBrightness = static_cast<uint8_t>(brightness);
+  matrixFrameDirty = true;
+  lastMatrixFrameAtMs = 0;
+
+  if (persistSelection) {
+    persistMatrixState();
+  }
+
+  return true;
+}
+
+bool updateMatrixAnimationSpeed(int animationSpeed, bool persistSelection) {
+  if (animationSpeed < kMatrixMinAnimationSpeed || animationSpeed > kMatrixMaxAnimationSpeed) {
+    return false;
+  }
+
+  matrixAnimationSpeed = static_cast<uint8_t>(animationSpeed);
   matrixFrameDirty = true;
   lastMatrixFrameAtMs = 0;
 
@@ -465,9 +495,15 @@ bool activateMatrixMessage(const String &rawText, bool persistSelection) {
 void loadSavedMatrixState() {
   updateMatrixColor(preferences.getString(kMatrixColorPreferenceKey, kMatrixDefaultColorHex), false);
 
+  bool storedEnabled = preferences.getBool(kMatrixEnabledPreferenceKey, true);
   const uint8_t storedBrightness = preferences.getUChar(kMatrixBrightnessPreferenceKey, kMatrixDefaultBrightness);
   if (!updateMatrixBrightness(storedBrightness, false)) {
     updateMatrixBrightness(kMatrixDefaultBrightness, false);
+  }
+
+  const uint8_t storedAnimationSpeed = preferences.getUChar(kMatrixAnimationSpeedPreferenceKey, kMatrixDefaultAnimationSpeed);
+  if (!updateMatrixAnimationSpeed(storedAnimationSpeed, false)) {
+    updateMatrixAnimationSpeed(kMatrixDefaultAnimationSpeed, false);
   }
 
   if (!updateMatrixMapping(preferences.getString(kMatrixMappingPreferenceKey, kDefaultMatrixMappingId), false)) {
@@ -482,14 +518,29 @@ void loadSavedMatrixState() {
     updateMatrixMessageText(kDefaultMatrixMessage, false);
   }
 
-  const String storedPattern = preferences.getString(kMatrixPatternPreferenceKey, kMatrixPatterns[2].id);
+  String storedPattern = preferences.getString(kMatrixPatternPreferenceKey, kDefaultMatrixPatternId);
+  if (storedPattern == "off") {
+    storedEnabled = false;
+    storedPattern = kDefaultMatrixPatternId;
+  }
+
+  updateMatrixEnabled(storedEnabled, false);
+
   if (!selectMatrixPatternById(storedPattern, false)) {
-    selectMatrixPatternById(kMatrixPatterns[2].id, false);
+    selectMatrixPatternById(kDefaultMatrixPatternId, false);
   }
 }
 
 RgbColor matrixPreviewColorAt(uint8_t row, uint8_t column) {
+  if (!matrixEnabled) {
+    return makeColor(0, 0, 0);
+  }
+
   return scaleColor(matrixFrame[matrixPixelIndex(row, column)], matrixBrightness);
+}
+
+uint32_t matrixAnimationNow(uint32_t now) {
+  return static_cast<uint32_t>((static_cast<uint64_t>(now) * matrixAnimationSpeed) / kMatrixDefaultAnimationSpeed);
 }
 
 void initializeMatrix() {

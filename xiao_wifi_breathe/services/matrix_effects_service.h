@@ -742,13 +742,11 @@ void renderMatrixRainDrops(uint32_t now) {
 
 void renderMatrixFrame(uint32_t now) {
   if (activeMatrixPattern == nullptr) {
-    renderMatrixOff();
+    clearMatrixFrame();
     return;
   }
 
-  if (strcmp(activeMatrixPattern->id, "off") == 0) {
-    renderMatrixOff();
-  } else if (strcmp(activeMatrixPattern->id, "solid") == 0) {
+  if (strcmp(activeMatrixPattern->id, kMatrixSolidPatternId) == 0) {
     renderMatrixSolid();
   } else if (strcmp(activeMatrixPattern->id, "rainbow") == 0) {
     renderMatrixRainbow(now);
@@ -829,12 +827,12 @@ void renderMatrixFrame(uint32_t now) {
   } else if (strcmp(activeMatrixPattern->id, kMatrixMessagePatternId) == 0) {
     renderMatrixMessage(now);
   } else {
-    renderMatrixOff();
+    clearMatrixFrame();
   }
 }
 
 void applyMatrixFrameNow() {
-  renderMatrixFrame(millis());
+  renderMatrixFrame(matrixAnimationNow(millis()));
   writeMatrixFrame();
   matrixFrameDirty = false;
   lastMatrixFrameAtMs = millis();
@@ -854,7 +852,7 @@ void updateMatrixPattern() {
     return;
   }
 
-  renderMatrixFrame(now);
+  renderMatrixFrame(matrixAnimationNow(now));
   writeMatrixFrame();
   matrixFrameDirty = false;
   lastMatrixFrameAtMs = now;

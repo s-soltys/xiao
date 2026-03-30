@@ -4,12 +4,26 @@ bool matrixAppAvailable() {
   return matrixReady;
 }
 
+int parseMatrixBoolArg(const String &value) {
+  if (value == "1" || value.equalsIgnoreCase("true") || value.equalsIgnoreCase("on")) {
+    return 1;
+  }
+
+  if (value == "0" || value.equalsIgnoreCase("false") || value.equalsIgnoreCase("off")) {
+    return 0;
+  }
+
+  return kJsonBoolFieldMissing;
+}
+
 String buildMatrixJson() {
   String json;
-  json.reserve(4352);
+  json.reserve(4608);
 
   json += F("{\"available\":");
   json += matrixReady ? F("true") : F("false");
+  json += F(",\"enabled\":");
+  json += matrixEnabled ? F("true") : F("false");
   json += F(",\"error\":\"");
   json += jsonEscape(matrixError);
   json += F("\",\"dataPin\":\"A0/D0\",");
@@ -27,6 +41,8 @@ String buildMatrixJson() {
   json += activeMatrixPattern->label;
   json += F("\",\"brightness\":");
   json += String(matrixBrightness);
+  json += F(",\"animationSpeed\":");
+  json += String(matrixAnimationSpeed);
   json += F(",\"color\":\"");
   json += matrixColorHex;
   json += F("\",\"mappingId\":\"");
@@ -53,10 +69,16 @@ String buildMatrixJson() {
 
   json += F("],\"patterns\":[");
 
+  bool firstPattern = true;
   for (size_t index = 0; index < sizeof(kMatrixPatterns) / sizeof(kMatrixPatterns[0]); ++index) {
-    if (index > 0) {
+    if (!kMatrixPatterns[index].showInMatrixApp) {
+      continue;
+    }
+
+    if (!firstPattern) {
       json += ',';
     }
+    firstPattern = false;
 
     json += F("{\"id\":\"");
     json += kMatrixPatterns[index].id;
@@ -105,13 +127,27 @@ void handleMatrixUpdate() {
     nextMappingId = webServer.arg(F("mappingId"));
   }
 
+  int nextEnabled = extractJsonBoolField(body, "enabled");
+  if (nextEnabled == kJsonBoolFieldMissing && webServer.hasArg(F("enabled"))) {
+    nextEnabled = parseMatrixBoolArg(webServer.arg(F("enabled")));
+  }
+
   int nextBrightness = extractJsonIntField(body, "brightness");
   if (nextBrightness == kJsonFieldMissing && webServer.hasArg(F("brightness"))) {
     nextBrightness = webServer.arg(F("brightness")).toInt();
   }
 
-  if (nextPatternId.isEmpty() && nextColor.isEmpty() && nextMappingId.isEmpty() && nextBrightness == kJsonFieldMissing) {
-    sendJsonError(400, F("Request body must include patternId, color, mappingId, or brightness."));
+  int nextAnimationSpeed = extractJsonIntField(body, "animationSpeed");
+  if (nextAnimationSpeed == kJsonFieldMissing && webServer.hasArg(F("animationSpeed"))) {
+    nextAnimationSpeed = webServer.arg(F("animationSpeed")).toInt();
+  }
+
+  if (
+    nextPatternId.isEmpty() && nextColor.isEmpty() && nextMappingId.isEmpty() && nextBrightness == kJsonFieldMissing &&
+    nextAnimationSpeed == kJsonFieldMissing &&
+    nextEnabled == kJsonBoolFieldMissing
+  ) {
+    sendJsonError(400, F("Request body must include patternId, color, mappingId, brightness, animationSpeed, or enabled."));
     return;
   }
 
@@ -119,6 +155,9 @@ void handleMatrixUpdate() {
   const MatrixMappingDefinition *candidateMapping = activeMatrixMapping;
   RgbColor candidateColor = matrixBaseColor;
   String candidateColorHex = matrixColorHex;
+  bool candidateEnabled = matrixEnabled;
+  int candidateBrightness = matrixBrightness;
+  int candidateAnimationSpeed = matrixAnimationSpeed;
 
   if (!nextPatternId.isEmpty()) {
     candidatePattern = findMatrixPatternById(nextPatternId);
@@ -146,15 +185,38 @@ void handleMatrixUpdate() {
     return;
   }
 
+  if (
+    nextAnimationSpeed != kJsonFieldMissing &&
+    (nextAnimationSpeed < kMatrixMinAnimationSpeed || nextAnimationSpeed > kMatrixMaxAnimationSpeed)
+  ) {
+    sendJsonError(
+      400, String(F("Matrix animation speed must be between ")) + String(kMatrixMinAnimationSpeed) + F(" and ") + String(kMatrixMaxAnimationSpeed) + F(".")
+    );
+    return;
+  }
+
+  if (nextEnabled != kJsonBoolFieldMissing) {
+    candidateEnabled = nextEnabled == 1;
+  }
+
+  if (nextBrightness != kJsonFieldMissing) {
+    candidateBrightness = nextBrightness;
+  }
+
+  if (nextAnimationSpeed != kJsonFieldMissing) {
+    candidateAnimationSpeed = nextAnimationSpeed;
+  }
+
   activeMatrixPattern = candidatePattern;
   activeMatrixMapping = candidateMapping;
   matrixBaseColor = candidateColor;
   matrixColorHex = candidateColorHex;
-  if (nextBrightness != kJsonFieldMissing) {
-    matrixBrightness = static_cast<uint8_t>(nextBrightness);
-  }
+  matrixEnabled = candidateEnabled;
+  matrixBrightness = static_cast<uint8_t>(candidateBrightness);
+  matrixAnimationSpeed = static_cast<uint8_t>(candidateAnimationSpeed);
 
   matrixFrameDirty = true;
+  lastMatrixFrameAtMs = 0;
   persistMatrixState();
   applyMatrixFrameNow();
 

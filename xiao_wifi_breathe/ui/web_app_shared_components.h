@@ -5,10 +5,19 @@ const char kWebAppSharedComponents[] PROGMEM = R"HTML(
         {
           id: 'matrix',
           label: 'RGB Matrix',
-          description: 'Control the 6x10 WS2812B panel on A0/D0 with animated effects.',
+          description: 'Control the 6x10 WS2812B panel on A0/D0 with animated effects and mapping.',
           routeBase: '/api/matrix',
           stateRoute: '/api/matrix',
           actionRoute: '/api/matrix',
+          available: true,
+        },
+        {
+          id: 'glow',
+          label: 'Solid Glow',
+          description: 'Pick one shared color and fill the entire matrix with it.',
+          routeBase: '/api/glow',
+          stateRoute: '/api/glow',
+          actionRoute: '/api/glow',
           available: true,
         },
         {
@@ -174,6 +183,8 @@ const char kWebAppSharedComponents[] PROGMEM = R"HTML(
 
       const kMatrixBrightnessSliderMax = 255;
       const kMatrixBrightnessCurve = 2.4;
+      const kMatrixAnimationSpeedMin = 25;
+      const kMatrixAnimationSpeedMax = 200;
 
       function clampNumber(value, min, max) {
         return Math.min(max, Math.max(min, value));
@@ -189,7 +200,7 @@ const char kWebAppSharedComponents[] PROGMEM = R"HTML(
         return String(Math.round(Math.pow(normalized, 1 / kMatrixBrightnessCurve) * kMatrixBrightnessSliderMax));
       }
 
-      function isDedicatedMatrixAppPattern(patternId) {
-        return patternId === 'mood' || patternId === 'message';
+      function matrixAnimationSpeedFromSliderValue(sliderValue) {
+        return clampNumber(Number(sliderValue), kMatrixAnimationSpeedMin, kMatrixAnimationSpeedMax);
       }
 )HTML";

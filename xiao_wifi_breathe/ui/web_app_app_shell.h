@@ -9,6 +9,7 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
         const [moodState, setMoodState] = useState(null);
         const [messageState, setMessageState] = useState(null);
         const [matrixState, setMatrixState] = useState(null);
+        const [glowState, setGlowState] = useState(null);
         const [bluetoothState, setBluetoothState] = useState(null);
         const [deviceState, setDeviceState] = useState(null);
         const [loading, setLoading] = useState(true);
@@ -16,27 +17,36 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
         const [moodBusyId, setMoodBusyId] = useState('');
         const [messageBusy, setMessageBusy] = useState(false);
         const [matrixBusy, setMatrixBusy] = useState(false);
-        const [matrixBrightnessSyncing, setMatrixBrightnessSyncing] = useState(false);
+        const [matrixOutputSyncing, setMatrixOutputSyncing] = useState(false);
+        const [glowBusy, setGlowBusy] = useState(false);
         const [scanBusy, setScanBusy] = useState(false);
         const [error, setError] = useState('');
         const [messageInput, setMessageInput] = useState('');
-        const [matrixColor, setMatrixColor] = useState('#22c55e');
+        const [glowColor, setGlowColor] = useState('#22c55e');
         const [matrixBrightnessSlider, setMatrixBrightnessSlider] = useState(() => sliderValueFromMatrixBrightness(48));
+        const [matrixAnimationSpeedSlider, setMatrixAnimationSpeedSlider] = useState('100');
         const [matrixMapping, setMatrixMapping] = useState('cols-bl');
-        const [matrixInputsReady, setMatrixInputsReady] = useState(false);
+        const [matrixMappingReady, setMatrixMappingReady] = useState(false);
+        const [matrixOutputInputsReady, setMatrixOutputInputsReady] = useState(false);
         const matrixRequestSeqRef = useRef(0);
 
         const visibleApps = appRegistry.length ? appRegistry : fallbackAppRegistry;
+        const matrixOutputBusy = matrixBusy || glowBusy || matrixOutputSyncing;
+        const matrixOutputAvailable = Boolean(matrixState?.available);
 
         function syncMatrixInputsFromPayload(payload, options = {}) {
           if (options.includeColor !== false) {
-            setMatrixColor(payload.color || '#22c55e');
+            setGlowColor(payload.color || '#22c55e');
           }
-          setMatrixBrightnessSlider(sliderValueFromMatrixBrightness(payload.brightness ?? 48));
           if (options.includeMapping !== false) {
             setMatrixMapping(payload.mappingId || 'cols-bl');
+            setMatrixMappingReady(true);
           }
-          setMatrixInputsReady(true);
+          if (options.includeOutput !== false) {
+            setMatrixBrightnessSlider(sliderValueFromMatrixBrightness(payload.brightness ?? 48));
+            setMatrixAnimationSpeedSlider(String(payload.animationSpeed ?? 100));
+            setMatrixOutputInputsReady(true);
+          }
         }
 
         async function fetchSystemState() {
@@ -61,9 +71,16 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
         async function fetchMatrixState(syncInputs = false) {
           const payload = await fetchJson('/api/matrix', { cache: 'no-store' });
           setMatrixState(payload);
-          if (syncInputs || !matrixInputsReady) {
+          if (syncInputs || !matrixMappingReady || !matrixOutputInputsReady) {
             syncMatrixInputsFromPayload(payload);
           }
+          return payload;
+        }
+
+        async function fetchGlowState() {
+          const payload = await fetchJson('/api/glow', { cache: 'no-store' });
+          setGlowState(payload);
+          setGlowColor(payload.color || '#22c55e');
           return payload;
         }
 
@@ -92,6 +109,7 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
             fetchMoodState(),
             fetchMessageState(),
             fetchMatrixState(true),
+            fetchGlowState(),
             fetchBluetoothState(),
             fetchDeviceState(),
           ]);
@@ -158,8 +176,11 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
             return;
           }
 
-          syncMatrixInputsFromPayload(matrixState);
-        }, [activeApp]);
+          syncMatrixInputsFromPayload(matrixState, {
+            includeColor: false,
+            includeOutput: false,
+          });
+        }, [activeApp, matrixState]);
 
         async function updateMatrixSettings(changes, options = {}) {
           const requestSeq = matrixRequestSeqRef.current + 1;
@@ -167,10 +188,9 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
 
           if (options.setBusy !== false) {
             setMatrixBusy(true);
-            setMatrixBrightnessSyncing(false);
           }
-          if (options.trackBrightnessSync) {
-            setMatrixBrightnessSyncing(true);
+          if (options.trackOutputSync) {
+            setMatrixOutputSyncing(true);
           }
           setError('');
 
@@ -191,10 +211,13 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
             syncMatrixInputsFromPayload(payload, {
               includeColor: options.includeColor,
               includeMapping: options.includeMapping,
+              includeOutput: options.includeOutput,
             });
+
             if (options.refreshDependentApps !== false) {
               fetchMoodState().catch(() => {});
               fetchMessageState().catch(() => {});
+              fetchGlowState().catch(() => {});
             }
             return payload;
           } catch (requestError) {
@@ -207,12 +230,54 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
               if (options.setBusy !== false) {
                 setMatrixBusy(false);
               }
-              if (options.trackBrightnessSync) {
-                setMatrixBrightnessSyncing(false);
+              if (options.trackOutputSync) {
+                setMatrixOutputSyncing(false);
               }
             }
           }
         }
+
+        useEffect(() => {
+          if (!matrixOutputInputsReady || !matrixState?.available) {
+            return undefined;
+          }
+
+          const nextBrightness = matrixBrightnessFromSliderValue(matrixBrightnessSlider);
+          const nextAnimationSpeed = matrixAnimationSpeedFromSliderValue(matrixAnimationSpeedSlider);
+          const changes = {};
+
+          if (nextBrightness !== (matrixState?.brightness ?? nextBrightness)) {
+            changes.brightness = nextBrightness;
+          }
+
+          if (nextAnimationSpeed !== (matrixState?.animationSpeed ?? nextAnimationSpeed)) {
+            changes.animationSpeed = nextAnimationSpeed;
+          }
+
+          if (Object.keys(changes).length === 0) {
+            return undefined;
+          }
+
+          const timeoutId = window.setTimeout(() => {
+            updateMatrixSettings(changes, {
+              setBusy: false,
+              trackOutputSync: true,
+              includeColor: false,
+              includeMapping: false,
+              refreshDependentApps: false,
+              errorMessage: 'Unable to update the shared matrix controls.',
+            }).catch(() => {});
+          }, 120);
+
+          return () => window.clearTimeout(timeoutId);
+        }, [
+          matrixBrightnessSlider,
+          matrixAnimationSpeedSlider,
+          matrixOutputInputsReady,
+          matrixState?.available,
+          matrixState?.brightness,
+          matrixState?.animationSpeed,
+        ]);
 
         async function activateMood(moodId) {
           setMoodBusyId(moodId);
@@ -228,6 +293,7 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
             });
             setMoodState(payload);
             await fetchMatrixState(false);
+            fetchGlowState().catch(() => {});
           } catch (requestError) {
             setError(requestError.message || 'Unable to update the mood icon.');
           } finally {
@@ -251,6 +317,7 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
             setMessageState(payload);
             setMessageInput(payload.text || '');
             await fetchMatrixState(false);
+            fetchGlowState().catch(() => {});
           } catch (requestError) {
             setError(requestError.message || 'Unable to update the scrolling message.');
           } finally {
@@ -260,39 +327,41 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
 
         async function applyMatrixControls(event) {
           event.preventDefault();
-          await updateMatrixSettings({
-            color: matrixColor,
-            brightness: matrixBrightnessFromSliderValue(matrixBrightnessSlider),
-            mappingId: matrixMapping,
-          });
+          await updateMatrixSettings(
+            {
+              mappingId: matrixMapping,
+            },
+            {
+              includeColor: false,
+              includeOutput: false,
+            }
+          );
         }
 
-        useEffect(() => {
-          if (!matrixInputsReady || !matrixState?.available) {
-            return undefined;
+        async function applyGlow(event) {
+          event.preventDefault();
+          setGlowBusy(true);
+          setError('');
+
+          try {
+            const payload = await fetchJson('/api/glow', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ color: glowColor }),
+            });
+            setGlowState(payload);
+            setGlowColor(payload.color || '#22c55e');
+            await fetchMatrixState(false);
+            fetchMoodState().catch(() => {});
+            fetchMessageState().catch(() => {});
+          } catch (requestError) {
+            setError(requestError.message || 'Unable to update the solid glow color.');
+          } finally {
+            setGlowBusy(false);
           }
-
-          const nextBrightness = matrixBrightnessFromSliderValue(matrixBrightnessSlider);
-          if (nextBrightness === (matrixState?.brightness ?? nextBrightness)) {
-            return undefined;
-          }
-
-          const timeoutId = window.setTimeout(() => {
-            updateMatrixSettings(
-              { brightness: nextBrightness },
-              {
-                setBusy: false,
-                trackBrightnessSync: true,
-                includeColor: false,
-                includeMapping: false,
-                refreshDependentApps: false,
-                errorMessage: 'Unable to update the matrix brightness.',
-              }
-            ).catch(() => {});
-          }, 120);
-
-          return () => window.clearTimeout(timeoutId);
-        }, [matrixBrightnessSlider, matrixInputsReady, matrixState?.available, matrixState?.brightness]);
+        }
 
         async function startBluetoothScan() {
           setScanBusy(true);
@@ -333,16 +402,32 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
               <MatrixAppPanel
                 matrixState={matrixState}
                 matrixBusy={matrixBusy}
-                matrixBrightnessSyncing={matrixBrightnessSyncing}
-                matrixColor={matrixColor}
-                onMatrixColorChange={setMatrixColor}
-                matrixBrightnessSlider={matrixBrightnessSlider}
-                onBrightnessSliderChange={setMatrixBrightnessSlider}
-                matrixBrightnessValue={matrixBrightnessFromSliderValue(matrixBrightnessSlider)}
                 matrixMapping={matrixMapping}
                 onMatrixMappingChange={setMatrixMapping}
                 onApplyMatrixControls={applyMatrixControls}
-                onSelectPattern={(patternId) => updateMatrixSettings({ patternId })}
+                onSelectPattern={(patternId) =>
+                  updateMatrixSettings(
+                    { patternId },
+                    {
+                      includeColor: false,
+                      includeOutput: false,
+                      errorMessage: 'Unable to switch the RGB matrix effect.',
+                    }
+                  )
+                }
+              />
+            );
+          }
+
+          if (activeApp === 'glow') {
+            return (
+              <GlowAppPanel
+                glowState={glowState}
+                matrixState={matrixState}
+                glowColor={glowColor}
+                onGlowColorChange={setGlowColor}
+                onApplyGlow={applyGlow}
+                glowBusy={glowBusy}
               />
             );
           }
@@ -356,6 +441,9 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
 
         const activeAppConfig = visibleApps.find((app) => app.id === activeApp) || visibleApps[0] || null;
         const activeAppLabel = activeAppConfig?.label || 'Device Console';
+        const matrixOutputEnabled = Boolean(matrixState?.enabled);
+        const matrixBrightnessValue = matrixBrightnessFromSliderValue(matrixBrightnessSlider);
+        const matrixAnimationSpeedValue = matrixAnimationSpeedFromSliderValue(matrixAnimationSpeedSlider);
 
         if (loading && !systemState) {
           return (
@@ -375,16 +463,16 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
           <main className="mx-auto flex min-h-screen max-w-7xl px-5 py-8 sm:py-10">
             <div className="w-full rounded-[2rem] border border-white/80 bg-white/75 p-6 shadow-panel backdrop-blur sm:p-8">
               <div className="flex flex-col gap-8">
-                <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+                <section className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
                   <div>
                     <p className="text-xs font-medium uppercase tracking-[0.35em] text-teal-700">App Registry Device Console</p>
                     <h1 className="mt-3 text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">XIAO Device Console</h1>
                     <p className="mt-4 max-w-3xl text-base text-slate-600 sm:text-lg">
-                      Switch between device apps exposed by the firmware registry. Each panel still talks to its dedicated API routes, but the shell no longer hardcodes the app list.
+                      Switch between device apps exposed by the firmware registry. Global matrix power, brightness, and animation speed stay in the header so they are always within reach.
                     </p>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <StatusCard
                       label="Reachability"
                       value={systemState?.connected ? systemState.hostname : 'Waiting for Wi-Fi'}
@@ -400,10 +488,91 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
                       value={deviceState ? `${deviceState.chipModel} rev ${deviceState.chipRevision}` : 'Loading chip info'}
                       tone="neutral"
                     />
+
+                    <div className="sm:col-span-2 rounded-[1.6rem] border border-slate-200 bg-white/85 p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Global Matrix Control</div>
+                          <div className="mt-1 text-xl font-bold text-slate-900">{matrixOutputEnabled ? 'Output enabled' : 'Output disabled'}</div>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={matrixOutputEnabled}
+                          onClick={() =>
+                            updateMatrixSettings(
+                              { enabled: !matrixOutputEnabled },
+                              {
+                                includeColor: false,
+                                includeMapping: false,
+                                errorMessage: 'Unable to toggle the matrix output.',
+                              }
+                            )
+                          }
+                          disabled={matrixOutputBusy || !matrixOutputAvailable}
+                          className={[
+                            'relative inline-flex h-11 w-20 items-center rounded-full border transition',
+                            matrixOutputEnabled ? 'border-slate-950 bg-slate-950' : 'border-slate-300 bg-slate-200',
+                            matrixOutputBusy ? 'opacity-60' : '',
+                          ].join(' ')}
+                        >
+                          <span
+                            className={[
+                              'inline-block h-8 w-8 rounded-full bg-white shadow transition',
+                              matrixOutputEnabled ? 'translate-x-10' : 'translate-x-1',
+                            ].join(' ')}
+                          />
+                        </button>
+                      </div>
+
+                      <div className="mt-4 grid gap-4">
+                        <div className="grid gap-2">
+                          <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+                            <span className="font-medium text-slate-900">Brightness</span>
+                            <span>{matrixBrightnessValue}/255</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max={kMatrixBrightnessSliderMax}
+                            step="1"
+                            value={matrixBrightnessSlider}
+                            onChange={(event) => setMatrixBrightnessSlider(event.target.value)}
+                            disabled={matrixOutputBusy || !matrixOutputAvailable}
+                            className="w-full accent-teal-600 disabled:opacity-60"
+                          />
+                          <div className="flex items-center justify-between text-xs text-slate-500">
+                            <span>Low-end tuned response curve</span>
+                            <span>{matrixOutputSyncing ? 'Updating...' : 'Live output'}</span>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-2">
+                          <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+                            <span className="font-medium text-slate-900">Animation Speed</span>
+                            <span>{matrixAnimationSpeedValue}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={kMatrixAnimationSpeedMin}
+                            max={kMatrixAnimationSpeedMax}
+                            step="1"
+                            value={matrixAnimationSpeedSlider}
+                            onChange={(event) => setMatrixAnimationSpeedSlider(event.target.value)}
+                            disabled={matrixOutputBusy || !matrixOutputAvailable}
+                            className="w-full accent-teal-600 disabled:opacity-60"
+                          />
+                          <div className="flex items-center justify-between text-xs text-slate-500">
+                            <span>Affects all live matrix animations</span>
+                            <span>{matrixState?.color || '#22c55e'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </section>
 
-                <section className="grid gap-3 lg:grid-cols-3 2xl:grid-cols-5">
+                <section className="grid gap-3 lg:grid-cols-3 2xl:grid-cols-6">
                   {visibleApps.map((app) => (
                     <AppTab key={app.id} app={app} activeApp={activeApp} onSelect={setActiveApp} />
                   ))}

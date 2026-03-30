@@ -44,24 +44,32 @@ constexpr uint8_t kMatrixColumns = 10;
 constexpr size_t kMatrixLedCount = kMatrixRows * kMatrixColumns;
 constexpr uint16_t kMatrixFrameIntervalMs = 40;
 constexpr uint8_t kMatrixDefaultBrightness = 48;
+constexpr uint8_t kMatrixDefaultAnimationSpeed = 100;
+constexpr uint8_t kMatrixMinAnimationSpeed = 25;
+constexpr uint8_t kMatrixMaxAnimationSpeed = 200;
 constexpr char kMatrixDefaultColorHex[] = "#22c55e";
 constexpr char kPreferenceNamespace[] = "xiao-app";
 constexpr char kPatternPreferenceKey[] = "pattern";
 constexpr char kMorseTextPreferenceKey[] = "morseText";
 constexpr char kMatrixPatternPreferenceKey[] = "matrixPattern";
+constexpr char kMatrixEnabledPreferenceKey[] = "matrixEnabled";
 constexpr char kMatrixBrightnessPreferenceKey[] = "matrixBright";
+constexpr char kMatrixAnimationSpeedPreferenceKey[] = "matrixSpeed";
 constexpr char kMatrixColorPreferenceKey[] = "matrixColor";
 constexpr char kMatrixMappingPreferenceKey[] = "matrixMap";
 constexpr char kMatrixMoodPreferenceKey[] = "matrixMood";
 constexpr char kMatrixMessagePreferenceKey[] = "matrixMessage";
 constexpr char kMorsePatternId[] = "morse-text";
 constexpr char kMorsePatternLabel[] = "Custom Morse";
+constexpr char kMatrixSolidPatternId[] = "solid";
 constexpr char kMatrixMoodPatternId[] = "mood";
 constexpr char kMatrixMessagePatternId[] = "message";
+constexpr char kDefaultMatrixPatternId[] = "rainbow";
 constexpr char kDefaultMatrixMappingId[] = "cols-bl";
 constexpr char kDefaultMatrixMoodId[] = "happy";
 constexpr char kDefaultMatrixMessage[] = "HELLO";
 constexpr int kJsonFieldMissing = -1000;
+constexpr int kJsonBoolFieldMissing = -1;
 constexpr size_t kMaxMatrixMessageLength = 64;
 constexpr uint8_t kMatrixGlyphWidth = 3;
 constexpr uint8_t kMatrixWideGlyphWidth = 5;
@@ -111,6 +119,7 @@ struct MatrixPatternDefinition {
   const char *id;
   const char *label;
   bool animated;
+  bool showInMatrixApp;
 };
 
 struct MatrixMappingDefinition {
@@ -146,14 +155,16 @@ BleScanResultEntry bleResults[kMaxBleDevices];
 RgbColor matrixFrame[kMatrixLedCount];
 
 const PatternDefinition *activePattern = &kPatterns[0];
-const MatrixPatternDefinition *activeMatrixPattern = &kMatrixPatterns[2];
+const MatrixPatternDefinition *activeMatrixPattern = &kMatrixPatterns[1];
 const MatrixMappingDefinition *activeMatrixMapping = &kMatrixMappings[2];
 String morseText;
 String matrixColorHex = String(kMatrixDefaultColorHex);
 String matrixMoodId = String(kDefaultMatrixMoodId);
 String matrixMessageText = String(kDefaultMatrixMessage);
 String matrixError;
+bool matrixEnabled = true;
 uint8_t matrixBrightness = kMatrixDefaultBrightness;
+uint8_t matrixAnimationSpeed = kMatrixDefaultAnimationSpeed;
 size_t activeStepIndex = 0;
 size_t bleResultCount = 0;
 uint32_t activeStepStartedAtMs = 0;
@@ -180,6 +191,7 @@ void applyMatrixFrameNow();
 #include "services/matrix_service.h"
 #include "services/matrix_effects_service.h"
 #include "apps/led_app.h"
+#include "apps/glow_app.h"
 #include "apps/matrix_app.h"
 #include "apps/mood_app.h"
 #include "apps/message_app.h"

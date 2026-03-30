@@ -2,6 +2,7 @@
 
 #include "ui/web_app_document_start.h"
 #include "ui/web_app_shared_components.h"
+#include "ui/web_app_glow_panel.h"
 #include "ui/web_app_mood_panel.h"
 #include "ui/web_app_message_panel.h"
 #include "ui/web_app_matrix_panel.h"
@@ -20,6 +21,7 @@ inline void sendWebAppHtml(WebServer &server) {
   server.send(200, F("text/html; charset=utf-8"), String());
   sendHtmlChunk(server, kWebAppDocumentStart);
   sendHtmlChunk(server, kWebAppSharedComponents);
+  sendHtmlChunk(server, kWebAppGlowPanel);
   sendHtmlChunk(server, kWebAppMoodPanel);
   sendHtmlChunk(server, kWebAppMessagePanel);
   sendHtmlChunk(server, kWebAppMatrixPanel);

@@ -14,7 +14,7 @@ const char kWebAppSharedComponents[] PROGMEM = R"HTML(
         {
           id: 'glow',
           label: 'Solid Glow',
-          description: 'Pick one shared color and fill the entire matrix with it.',
+          description: 'Pick one dedicated glow color and fill the entire matrix with it.',
           routeBase: '/api/glow',
           stateRoute: '/api/glow',
           actionRoute: '/api/glow',

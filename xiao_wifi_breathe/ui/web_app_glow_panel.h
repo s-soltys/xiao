@@ -9,11 +9,11 @@ const char kWebAppGlowPanel[] PROGMEM = R"HTML(
                 <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">Solid Glow</div>
                 <div className="mt-2 text-2xl font-bold sm:text-3xl">{glowState?.color || '#22c55e'}</div>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-                  Fill the whole 6x10 panel with one shared color. That same color is reused by mood icons, scrolling text, and color-driven effects.
+                  Fill the whole 6x10 panel with one dedicated color. This picker now belongs only to Solid Glow and does not tint the RGB effects, mood icons, or scrolling message.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-300">
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                    {glowState?.glowActive ? 'Glowing on matrix now' : 'Color saved for shared matrix output'}
+                    {glowState?.glowActive ? 'Glowing on matrix now' : 'Glow color saved'}
                   </span>
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
                     {matrixState?.enabled ? 'Matrix enabled' : 'Matrix disabled'}
@@ -26,7 +26,7 @@ const char kWebAppGlowPanel[] PROGMEM = R"HTML(
                   <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Glow Color</div>
                   <h2 className="mt-2 text-2xl font-bold text-slate-900">Pick one solid matrix color</h2>
                   <p className="mt-2 text-sm text-slate-600">
-                    Saving here switches the matrix into full-panel glow mode immediately and updates the shared matrix color for the other matrix apps too.
+                    Saving here switches the matrix into full-panel glow mode immediately. This setting only affects the Solid Glow app.
                   </p>
                 </div>
 
@@ -58,7 +58,7 @@ const char kWebAppGlowPanel[] PROGMEM = R"HTML(
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <StatusCard label="Matrix Output" value={matrixState?.enabled ? 'Enabled' : 'Disabled'} tone={matrixState?.enabled ? 'online' : 'offline'} />
               <StatusCard label="Output" value={`${matrixState?.brightness ?? 0}/255 • ${matrixState?.animationSpeed ?? 100}%`} tone="neutral" />
-              <StatusCard label="Shared Color" value={glowState?.color || '#22c55e'} tone="neutral" />
+              <StatusCard label="Glow Color" value={glowState?.color || '#22c55e'} tone="neutral" />
               <StatusCard label="Current Pattern" value={glowState?.selectedPatternLabel || 'Loading'} tone="neutral" />
             </section>
           </section>

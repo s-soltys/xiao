@@ -117,11 +117,6 @@ void handleMatrixUpdate() {
     nextPatternId = webServer.arg(F("patternId"));
   }
 
-  String nextColor = extractJsonStringField(body, "color");
-  if (nextColor.isEmpty() && webServer.hasArg(F("color"))) {
-    nextColor = webServer.arg(F("color"));
-  }
-
   String nextMappingId = extractJsonStringField(body, "mappingId");
   if (nextMappingId.isEmpty() && webServer.hasArg(F("mappingId"))) {
     nextMappingId = webServer.arg(F("mappingId"));
@@ -143,18 +138,16 @@ void handleMatrixUpdate() {
   }
 
   if (
-    nextPatternId.isEmpty() && nextColor.isEmpty() && nextMappingId.isEmpty() && nextBrightness == kJsonFieldMissing &&
+    nextPatternId.isEmpty() && nextMappingId.isEmpty() && nextBrightness == kJsonFieldMissing &&
     nextAnimationSpeed == kJsonFieldMissing &&
     nextEnabled == kJsonBoolFieldMissing
   ) {
-    sendJsonError(400, F("Request body must include patternId, color, mappingId, brightness, animationSpeed, or enabled."));
+    sendJsonError(400, F("Request body must include patternId, mappingId, brightness, animationSpeed, or enabled."));
     return;
   }
 
   const MatrixPatternDefinition *candidatePattern = activeMatrixPattern;
   const MatrixMappingDefinition *candidateMapping = activeMatrixMapping;
-  RgbColor candidateColor = matrixBaseColor;
-  String candidateColorHex = matrixColorHex;
   bool candidateEnabled = matrixEnabled;
   int candidateBrightness = matrixBrightness;
   int candidateAnimationSpeed = matrixAnimationSpeed;
@@ -165,11 +158,6 @@ void handleMatrixUpdate() {
       sendJsonError(400, String(F("Unknown matrix pattern id: ")) + nextPatternId);
       return;
     }
-  }
-
-  if (!nextColor.isEmpty() && !parseHexColor(nextColor, candidateColor, candidateColorHex)) {
-    sendJsonError(400, F("Matrix color must be a #RRGGBB hex value."));
-    return;
   }
 
   if (!nextMappingId.isEmpty()) {
@@ -209,8 +197,6 @@ void handleMatrixUpdate() {
 
   activeMatrixPattern = candidatePattern;
   activeMatrixMapping = candidateMapping;
-  matrixBaseColor = candidateColor;
-  matrixColorHex = candidateColorHex;
   matrixEnabled = candidateEnabled;
   matrixBrightness = static_cast<uint8_t>(candidateBrightness);
   matrixAnimationSpeed = static_cast<uint8_t>(candidateAnimationSpeed);

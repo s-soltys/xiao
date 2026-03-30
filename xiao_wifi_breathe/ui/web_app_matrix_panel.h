@@ -18,7 +18,7 @@ const char kWebAppMatrixPanel[] PROGMEM = R"HTML(
                 <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">RGB Matrix Output</div>
                 <div className="mt-2 text-2xl font-bold sm:text-3xl">{matrixState?.selectedPatternLabel || 'Loading effect'}</div>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-                  Drives a 6x10 WS2812B panel from the XIAO ESP32-C6 on <span className="font-semibold text-white">A0/D0</span>. Shared output power, brightness, and animation speed now live in the header, while solid color has its own dedicated tab.
+                  Drives a 6x10 WS2812B panel from the XIAO ESP32-C6 on <span className="font-semibold text-white">A0/D0</span>. Shared output power, brightness, and animation speed now live in the header, while each RGB effect carries its own built-in color look.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-300">
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{matrixState?.pixelCount || 60} pixels</span>
@@ -40,7 +40,7 @@ const char kWebAppMatrixPanel[] PROGMEM = R"HTML(
 
                 <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
                   Shared output controls are global:
-                  <div className="mt-2 text-slate-900">Power is {matrixState?.enabled ? 'enabled' : 'disabled'}, brightness is {matrixState?.brightness ?? 0}/255, speed is {matrixState?.animationSpeed ?? 100}%, and shared color comes from the Solid Glow tab.</div>
+                  <div className="mt-2 text-slate-900">Power is {matrixState?.enabled ? 'enabled' : 'disabled'}, brightness is {matrixState?.brightness ?? 0}/255, and speed is {matrixState?.animationSpeed ?? 100}%. Solid Glow color is now separate and does not tint these RGB effects.</div>
                 </div>
 
                 <div className="grid gap-2">
@@ -76,7 +76,7 @@ const char kWebAppMatrixPanel[] PROGMEM = R"HTML(
                 tone={matrixState?.available ? 'online' : 'offline'}
               />
               <StatusCard label="Geometry" value={`${matrixState?.rows || 6} x ${matrixState?.columns || 10}`} tone="neutral" />
-              <StatusCard label="Shared Color" value={matrixState?.color || '#22c55e'} tone="neutral" />
+              <StatusCard label="Animation Speed" value={`${matrixState?.animationSpeed ?? 100}%`} tone="neutral" />
               <StatusCard label="Mapping" value={matrixState?.mappingLabel || 'Loading'} tone="neutral" />
               <StatusCard label="Active Effect" value={matrixState?.selectedPatternLabel || 'Loading'} tone="neutral" />
             </section>

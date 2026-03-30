@@ -9,7 +9,7 @@ const char kWebAppMessagePanel[] PROGMEM = R"HTML(
                 <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">Scrolling Message</div>
                 <div className="mt-2 text-2xl font-bold sm:text-3xl">{messageState?.text || 'No message saved'}</div>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-                  The message enters from the right, moves across the matrix, exits on the left, and loops continuously using the shared matrix color.
+                  The message enters from the right, moves across the matrix, exits on the left, and loops continuously using its own fixed high-contrast text color.
                 </p>
                 <div className="mt-4 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-300">
                   {messageState?.selectedPatternId === 'message' ? 'Looping on matrix now' : 'Saved and ready'}
@@ -52,7 +52,7 @@ const char kWebAppMessagePanel[] PROGMEM = R"HTML(
                 tone="neutral"
               />
               <StatusCard label="Max Length" value={messageState?.maxLength || 64} tone="neutral" />
-              <StatusCard label="Base Color" value={matrixState?.color || '#22c55e'} tone="neutral" />
+              <StatusCard label="Mode" value={messageState?.selectedPatternId === 'message' ? 'Message Active' : 'Message Saved'} tone="neutral" />
               <StatusCard label="Output" value={`${matrixState?.enabled ? 'Enabled' : 'Disabled'} • ${matrixState?.brightness ?? 0}/255 • ${matrixState?.animationSpeed ?? 100}%`} tone="neutral" />
             </section>
           </section>

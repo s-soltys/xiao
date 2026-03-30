@@ -41,7 +41,7 @@ const AppDefinition kRegisteredApps[] = {
   {
     "glow",
     "Solid Glow",
-    "Pick one shared color and fill the entire matrix with it.",
+    "Pick one dedicated glow color and fill the entire matrix with it.",
     "/api/glow",
     "/api/glow",
     "/api/glow",

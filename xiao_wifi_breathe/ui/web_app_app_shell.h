@@ -564,7 +564,7 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
                           />
                           <div className="flex items-center justify-between text-xs text-slate-500">
                             <span>Affects all live matrix animations</span>
-                            <span>{matrixState?.color || '#22c55e'}</span>
+                            <span>{matrixState?.selectedPatternLabel || 'RGB Matrix'}</span>
                           </div>
                         </div>
                       </div>

@@ -154,39 +154,6 @@ void spiralStepToCoord(size_t step, uint8_t &row, uint8_t &column) {
   column = 0;
 }
 
-size_t borderPixelCount() {
-  return (kMatrixColumns * 2U) + (kMatrixRows * 2U) - 4U;
-}
-
-void borderStepToCoord(size_t step, uint8_t &row, uint8_t &column) {
-  const size_t perimeter = borderPixelCount();
-  step %= perimeter;
-
-  if (step < kMatrixColumns) {
-    row = 0;
-    column = static_cast<uint8_t>(step);
-    return;
-  }
-  step -= kMatrixColumns;
-
-  if (step < (kMatrixRows - 1)) {
-    row = static_cast<uint8_t>(step + 1);
-    column = kMatrixColumns - 1;
-    return;
-  }
-  step -= (kMatrixRows - 1);
-
-  if (step < (kMatrixColumns - 1)) {
-    row = kMatrixRows - 1;
-    column = static_cast<uint8_t>(kMatrixColumns - 2 - step);
-    return;
-  }
-  step -= (kMatrixColumns - 1);
-
-  row = static_cast<uint8_t>(kMatrixRows - 2 - step);
-  column = 0;
-}
-
 void writeMatrixFrame() {
   if (!matrixReady) {
     return;
@@ -241,6 +208,18 @@ const MatrixGlyph *findMatrixGlyph(char character) {
   return nullptr;
 }
 
+RgbColor matrixSolidGlowColor() {
+  return matrixBaseColor;
+}
+
+RgbColor matrixMoodRenderColor() {
+  return makeColor(0xff, 0xd6, 0x3b);
+}
+
+RgbColor matrixMessageRenderColor() {
+  return makeColor(0xf8, 0xfa, 0xfc);
+}
+
 uint8_t matrixGlyphWidth(const MatrixGlyph &glyph) {
   if (glyph.character == '-') {
     return kMatrixWideGlyphWidth;
@@ -251,7 +230,7 @@ uint8_t matrixGlyphWidth(const MatrixGlyph &glyph) {
 
 void drawMood(const MoodDefinition &mood) {
   clearMatrixFrame();
-  const RgbColor moodColor = matrixBaseColor;
+  const RgbColor moodColor = matrixMoodRenderColor();
 
   for (uint8_t row = 0; row < kMatrixRows; ++row) {
     const char *pixels = mood.rows[row];

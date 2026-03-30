@@ -9,7 +9,7 @@ const char kWebAppMoodPanel[] PROGMEM = R"HTML(
                 <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300">Mood Display</div>
                 <div className="mt-2 text-2xl font-bold sm:text-3xl">{moodState?.selectedMoodLabel || 'Loading mood'}</div>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-                  Shows a handmade emoji-style icon on the 6x10 WS2812B panel. Matrix power, brightness, and animation speed stay shared across every matrix app.
+                  Shows a handmade emoji-style icon on the 6x10 WS2812B panel. Matrix power, brightness, and animation speed stay shared across every matrix app, while the mood icon keeps its own fixed display color.
                 </p>
                 <div className="mt-4 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-300">
                   {moodState?.selectedPatternId === 'mood' ? 'Showing on matrix now' : 'Saved and ready'}
@@ -21,7 +21,7 @@ const char kWebAppMoodPanel[] PROGMEM = R"HTML(
                   <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Mood Notes</div>
                   <h2 className="mt-2 text-2xl font-bold text-slate-900">Pick a face for the matrix</h2>
                   <p className="mt-2 text-sm text-slate-600">
-                    Saving a mood switches the matrix immediately into Mood mode. Shared power, brightness, and animation speed stay global, while shared color comes from the Solid Glow tab.
+                    Saving a mood switches the matrix immediately into Mood mode. Shared power, brightness, and animation speed stay global, while Solid Glow color stays isolated to the Solid Glow app.
                   </p>
                 </div>
 

@@ -8,10 +8,10 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - a multi-app layout with RGB Matrix, Solid Glow, Mood, Message, Bluetooth, and Device Info sections
 - a solid onboard status LED while the device is powered
 - a 6x10 WS2812B RGB matrix controller on `A0 / D0 / GPIO 0`
-- 37 selectable RGB matrix effects plus dedicated Solid Glow, Mood, and Message modes
+- 20 selectable RGB matrix effects plus dedicated Solid Glow, Mood, and Message modes
 - a BLE scanner
 - a device-status app with internal temperature and system telemetry
-- matrix effect, enabled state, brightness level, animation speed, base color, mood, and message persistence across power cycles
+- matrix effect, enabled state, brightness level, animation speed, dedicated glow color, mood, and message persistence across power cycles
 - automatic Wi-Fi station startup on boot
 - local discovery at `http://xiao.local/` after Wi-Fi connects
 
@@ -22,7 +22,7 @@ On boot, the firmware:
 - enables the XIAO ESP32-C6 Wi-Fi hardware
 - initializes the BLE scanner
 - turns the onboard LED on as a power indicator
-- loads the saved RGB matrix effect, enabled state, brightness, animation speed, base color, mood, and message
+- loads the saved RGB matrix effect, enabled state, brightness, animation speed, dedicated glow color, mood, and message
 - initializes the WS2812B matrix driver on `A0 / D0 / GPIO 0`
 - starts Wi-Fi in station mode using `wifi_config.h`
 - starts an HTTP server on port `80` after Wi-Fi connects
@@ -31,7 +31,7 @@ On boot, the firmware:
 
 The mood app lets you switch between single-color matrix mood icons instantly.
 The message app lets you save a short text message that scrolls from right to left across the panel in a loop.
-The solid glow app lets you pick the shared matrix color and fill the whole panel with it immediately.
+The solid glow app lets you pick a dedicated glow color and fill the whole panel with it immediately.
 The matrix app lets you switch RGB panel effects instantly and correct the physical matrix mapping when the panel wiring order differs, while shared matrix power, brightness, and animation speed stay in the shell header.
 
 ## Project Layout
@@ -119,7 +119,7 @@ The frontend is now split into an app shell and per-app panels, and the shell di
 The web UI is split into six visible apps:
 
 - `RGB Matrix`: controls a 6x10 WS2812B panel connected to `A0 / D0 / GPIO 0`
-- `Solid Glow`: picks one shared color and fills the entire matrix with it
+- `Solid Glow`: picks one dedicated glow color and fills the entire matrix with it
 - `Mood App`: shows one saved mood icon on the RGB matrix
 - `Message App`: scrolls a saved text message right-to-left on the RGB matrix
 - `Bluetooth Scanner`: scans nearby BLE advertisers and shows scan results
@@ -242,7 +242,7 @@ Returns RGB matrix state including:
 - data pin and GPIO number
 - matrix dimensions and pixel count
 - selected matrix pattern id/label
-- persisted base color and brightness
+- persisted brightness and stored Solid Glow color
 - persisted global animation speed percentage
 - persisted matrix mapping id/label
 - saved mood id
@@ -263,8 +263,8 @@ Example:
   "rows": 6,
   "columns": 10,
   "pixelCount": 60,
-  "selectedPatternId": "rainbow",
-  "selectedPatternLabel": "Rainbow Sweep",
+  "selectedPatternId": "scanner",
+  "selectedPatternLabel": "Scanner",
   "brightness": 48,
   "animationSpeed": 100,
   "color": "#22c55e",
@@ -276,7 +276,7 @@ Example:
     { "id": "cols-bl", "label": "Columns • Bottom Left" }
   ],
   "patterns": [
-    { "id": "rainbow", "label": "Rainbow Sweep" }
+    { "id": "scanner", "label": "Scanner" }
   ],
   "frame": ["#001100"]
 }
@@ -301,10 +301,9 @@ Effect:
 - updates the RGB matrix effect immediately
 - updates shared output power, brightness, and animation speed immediately
 - updates the physical matrix wiring map used to place pixels
+- does not change the Solid Glow color
 - stores the selected matrix settings in NVS
 - returns the updated matrix state JSON
-
-Compatibility note: `POST /api/matrix` continues to accept `color` too, even though the UI now changes shared color from the Solid Glow app.
 
 ### `GET /api/glow`
 
@@ -314,7 +313,7 @@ Returns Solid Glow app state including:
 - global output enabled state
 - current brightness value
 - current global animation speed percentage
-- shared matrix color
+- dedicated Solid Glow color
 - whether Solid Glow is currently active on the panel
 - the active matrix pattern id/label
 
@@ -328,8 +327,8 @@ Example:
   "animationSpeed": 100,
   "color": "#22c55e",
   "glowActive": false,
-  "selectedPatternId": "rainbow",
-  "selectedPatternLabel": "Rainbow Sweep"
+  "selectedPatternId": "scanner",
+  "selectedPatternLabel": "Scanner"
 }
 ```
 
@@ -343,7 +342,7 @@ Request body:
 
 Effect:
 
-- validates and stores the shared matrix color
+- validates and stores the dedicated Solid Glow color
 - switches the RGB matrix immediately into full-panel solid glow mode
 - returns the updated Solid Glow state JSON
 
@@ -418,43 +417,26 @@ In addition, the firmware supports a custom `morse-text` mode that is activated 
 
 The RGB Matrix app exposes these effects for the 6x10 WS2812B panel:
 
-1. `rainbow`
-2. `scanner`
-3. `chase`
-4. `pulse`
-5. `checker`
-6. `sparkle`
-7. `plasma`
-8. `prism`
-9. `ripple`
-10. `meteor`
-11. `pinwheel`
-12. `aurora`
-13. `confetti`
-14. `static`
-15. `glitch`
-16. `lava`
-17. `spiral`
-18. `pong`
-19. `marquee`
-20. `equalizer`
-21. `radar`
-22. `orbit`
-23. `wavefront`
-24. `cross`
-25. `helix`
-26. `tiles`
-27. `pixel-spectrum`
-28. `raster-trace`
-29. `zigzag-trace`
-30. `row-spectrum`
-31. `column-spectrum`
-32. `row-fill`
-33. `column-fill`
-34. `diagonal-wipe`
-35. `spiral-trace`
-36. `border-fill`
-37. `rain-drops`
+1. `scanner`
+2. `chase`
+3. `pulse`
+4. `checker`
+5. `sparkle`
+6. `plasma`
+7. `prism`
+8. `ripple` (`Neon Ripple`)
+9. `meteor`
+10. `confetti` (`Confetti Burst`)
+11. `static`
+12. `lava`
+13. `spiral`
+14. `radar`
+15. `cross`
+16. `helix`
+17. `raster-trace`
+18. `zigzag-trace`
+19. `spiral-trace`
+20. `rain-drops`
 
 Dedicated matrix-only modes outside that effect picker:
 
@@ -523,7 +505,7 @@ The RGB matrix settings are persisted in:
 - On a 6x10 panel, mood icons work better as sparse single-color expressions than as full outlined or multicolor emoji faces.
 - Compact message glyphs need to be tuned for this panel. Punctuation, especially `-`, should be checked visually because wider symbols may need special handling.
 - The message app currently scrolls right-to-left, and that direction should stay in sync between firmware behavior, API metadata, and UI copy.
-- Structured effects such as `pixel-spectrum`, `raster-trace`, `zigzag-trace`, `row-fill`, and `column-fill` are the best first-pass tools for checking whether the physical layout is mapped correctly.
+- Structured effects such as `scanner`, `raster-trace`, `zigzag-trace`, and `spiral-trace` are the best first-pass tools for checking whether the physical layout is mapped correctly.
 
 ## Troubleshooting
 
@@ -543,12 +525,12 @@ If the RGB matrix does not light:
 - confirm the panel data input is wired to `A0 / D0 / GPIO 0`
 - confirm the panel has suitable power and shared ground
 - open the `RGB Matrix` app and verify `/api/matrix` reports `available: true`
-- confirm shared matrix output is enabled in the shell header
+- confirm matrix output is enabled in the shell header
 
 If matrix shapes look scrambled or some modes look correct while others do not:
 
 - confirm the selected mapping in the `RGB Matrix` app; `cols-bl` is the current default
-- test with structured effects such as `pixel-spectrum`, `zigzag-trace`, `row-fill`, and `column-fill`
+- test with structured effects such as `scanner`, `raster-trace`, `zigzag-trace`, and `spiral-trace`
 - treat any mode that only looks correct under one effect as a likely mapping/rendering bug rather than just bad artwork
 
 If upload fails:

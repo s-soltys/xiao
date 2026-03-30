@@ -4,6 +4,7 @@ const MatrixPatternDefinition kMatrixPatterns[] = {
   {kMatrixSolidPatternId, "Solid Glow", false, false},
   {"scanner", "Scanner", true, true},
   {"spectrum-scan", "Spectrum Scan", true, true},
+  {"lightning", "Lightning Trees", true, true},
   {"chase", "Theater Chase", true, true},
   {"pulse", "Color Pulse", true, true},
   {"checker", "Checker Flip", true, true},

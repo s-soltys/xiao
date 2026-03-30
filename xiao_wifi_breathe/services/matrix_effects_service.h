@@ -12,6 +12,9 @@ RgbColor matrixEffectBaseColor() {
   if (strcmp(activeMatrixPattern->id, "scanner") == 0) {
     return makeColor(0x2d, 0xd4, 0xbf);
   }
+  if (strcmp(activeMatrixPattern->id, "lightning") == 0) {
+    return makeColor(0x67, 0xe8, 0xf9);
+  }
   if (strcmp(activeMatrixPattern->id, "chase") == 0) {
     return makeColor(0xf5, 0x9e, 0x0b);
   }
@@ -98,58 +101,320 @@ RgbColor neonWaveColor(const RgbColor &baseColor, uint8_t hue, uint8_t wave, uin
   return color;
 }
 
-float sweepProjection(float x, float y, float directionX, float directionY) {
-  return x * directionX + y * directionY;
-}
-
-void randomSweepDirection(uint8_t directionIndex, float &directionX, float &directionY) {
-  constexpr float kInvSqrt2 = 0.70710678f;
-
-  switch (directionIndex % 8U) {
-    case 0:
-      directionX = 1.0f;
-      directionY = 0.0f;
-      break;
-    case 1:
-      directionX = -1.0f;
-      directionY = 0.0f;
-      break;
-    case 2:
-      directionX = 0.0f;
-      directionY = 1.0f;
-      break;
-    case 3:
-      directionX = 0.0f;
-      directionY = -1.0f;
-      break;
-    case 4:
-      directionX = kInvSqrt2;
-      directionY = kInvSqrt2;
-      break;
-    case 5:
-      directionX = -kInvSqrt2;
-      directionY = -kInvSqrt2;
-      break;
-    case 6:
-      directionX = -kInvSqrt2;
-      directionY = kInvSqrt2;
-      break;
-    default:
-      directionX = kInvSqrt2;
-      directionY = -kInvSqrt2;
-      break;
-  }
-}
-
 RgbColor sweepEventColor(uint32_t seed) {
   const uint8_t hue = static_cast<uint8_t>(((seed >> 8) & 0xFFU) + ((seed >> 22) & 0x3FU));
   return blendColors(colorWheel(hue), colorWheel(static_cast<uint8_t>(hue + 96U)), 56);
 }
 
+struct LightningPoint {
+  int row;
+  int column;
+};
+
+RgbColor lightningStrikeColor(uint32_t seed) {
+  const uint8_t hue = static_cast<uint8_t>(((seed >> 7) & 0xFFU) + ((seed >> 19) & 0x3FU));
+  return blendColors(colorWheel(hue), colorWheel(static_cast<uint8_t>(hue + 40U)), 84);
+}
+
+void selectLightningEndpoints(uint32_t seed, int &startRow, int &startColumn, int &targetRow, int &targetColumn) {
+  const uint8_t direction = static_cast<uint8_t>(seed & 0x7U);
+
+  switch (direction) {
+    case 0:
+      startRow = static_cast<int>((seed >> 8) % kMatrixRows);
+      startColumn = 0;
+      targetRow = static_cast<int>((seed >> 16) % kMatrixRows);
+      targetColumn = static_cast<int>(kMatrixColumns - 2U - ((seed >> 20) % 2U));
+      break;
+    case 1:
+      startRow = static_cast<int>((seed >> 8) % kMatrixRows);
+      startColumn = kMatrixColumns - 1;
+      targetRow = static_cast<int>((seed >> 16) % kMatrixRows);
+      targetColumn = static_cast<int>(1U + ((seed >> 20) % 2U));
+      break;
+    case 2:
+      startRow = 0;
+      startColumn = static_cast<int>((seed >> 8) % kMatrixColumns);
+      targetRow = static_cast<int>(kMatrixRows - 2U - ((seed >> 18) % 2U));
+      targetColumn = static_cast<int>((seed >> 22) % kMatrixColumns);
+      break;
+    case 3:
+      startRow = kMatrixRows - 1;
+      startColumn = static_cast<int>((seed >> 8) % kMatrixColumns);
+      targetRow = static_cast<int>(1U + ((seed >> 18) % 2U));
+      targetColumn = static_cast<int>((seed >> 22) % kMatrixColumns);
+      break;
+    case 4:
+      startRow = 0;
+      startColumn = 0;
+      targetRow = static_cast<int>(kMatrixRows - 2U - ((seed >> 18) % 2U));
+      targetColumn = static_cast<int>(kMatrixColumns - 2U - ((seed >> 22) % 2U));
+      break;
+    case 5:
+      startRow = 0;
+      startColumn = kMatrixColumns - 1;
+      targetRow = static_cast<int>(kMatrixRows - 2U - ((seed >> 18) % 2U));
+      targetColumn = static_cast<int>(1U + ((seed >> 22) % 2U));
+      break;
+    case 6:
+      startRow = kMatrixRows - 1;
+      startColumn = 0;
+      targetRow = static_cast<int>(1U + ((seed >> 18) % 2U));
+      targetColumn = static_cast<int>(kMatrixColumns - 2U - ((seed >> 22) % 2U));
+      break;
+    default:
+      startRow = kMatrixRows - 1;
+      startColumn = kMatrixColumns - 1;
+      targetRow = static_cast<int>(1U + ((seed >> 18) % 2U));
+      targetColumn = static_cast<int>(1U + ((seed >> 22) % 2U));
+      break;
+  }
+}
+
+uint8_t traceLightningPath(int startRow, int startColumn, int targetRow, int targetColumn, uint32_t seed, uint8_t maxPoints, LightningPoint *points) {
+  if (maxPoints == 0U) {
+    return 0U;
+  }
+
+  int row = constrain(startRow, 0, kMatrixRows - 1);
+  int column = constrain(startColumn, 0, kMatrixColumns - 1);
+  points[0] = {row, column};
+  uint8_t count = 1U;
+
+  for (uint8_t step = 1U; step < maxPoints; ++step) {
+    if (row == targetRow && column == targetColumn && count > 3U) {
+      break;
+    }
+
+    const uint32_t noise = hash32(seed + static_cast<uint32_t>(step) * 131U + static_cast<uint32_t>(row * 17 + column * 29));
+    const int deltaRow = targetRow - row;
+    const int deltaColumn = targetColumn - column;
+    int rowStep = 0;
+    int columnStep = 0;
+    const bool preferColumn = abs(deltaColumn) > abs(deltaRow) || (abs(deltaColumn) == abs(deltaRow) && ((noise & 0x1U) == 0U));
+
+    if (preferColumn && deltaColumn != 0) {
+      columnStep = deltaColumn > 0 ? 1 : -1;
+      if (deltaRow != 0 && ((noise >> 3) & 0x3U) != 0U) {
+        rowStep = deltaRow > 0 ? 1 : -1;
+      }
+    } else if (deltaRow != 0) {
+      rowStep = deltaRow > 0 ? 1 : -1;
+      if (deltaColumn != 0 && ((noise >> 5) & 0x3U) != 0U) {
+        columnStep = deltaColumn > 0 ? 1 : -1;
+      }
+    }
+
+    if (((noise >> 8) & 0x7U) == 0U) {
+      if (rowStep == 0 && row > 0 && row + 1 < kMatrixRows) {
+        rowStep = ((noise >> 12) & 0x1U) == 0U ? -1 : 1;
+      } else if (columnStep == 0 && column > 0 && column + 1 < kMatrixColumns) {
+        columnStep = ((noise >> 13) & 0x1U) == 0U ? -1 : 1;
+      }
+    }
+
+    if (rowStep == 0 && columnStep == 0) {
+      if (deltaColumn != 0) {
+        columnStep = deltaColumn > 0 ? 1 : -1;
+      } else if (deltaRow != 0) {
+        rowStep = deltaRow > 0 ? 1 : -1;
+      } else {
+        break;
+      }
+    }
+
+    const int nextRow = constrain(row + rowStep, 0, kMatrixRows - 1);
+    const int nextColumn = constrain(column + columnStep, 0, kMatrixColumns - 1);
+    if (nextRow == row && nextColumn == column) {
+      break;
+    }
+
+    row = nextRow;
+    column = nextColumn;
+    points[count++] = {row, column};
+  }
+
+  return count;
+}
+
+void addLightningGlow(int row, int column, const RgbColor &coreColor, const RgbColor &glowColor, uint8_t glowScale) {
+  addMatrixPixel(static_cast<uint8_t>(row), static_cast<uint8_t>(column), coreColor);
+
+  if (glowScale == 0U) {
+    return;
+  }
+
+  const uint32_t noise = hash32(static_cast<uint32_t>((row + 1) * 97 + (column + 1) * 193 + glowScale * 17));
+  if ((noise & 0x3U) != 0U) {
+    return;
+  }
+
+  const RgbColor sideSpark = scaleColor(glowColor, glowScale);
+  if ((noise & 0x4U) == 0U) {
+    const int offsetRow = ((noise >> 3) & 0x1U) == 0U ? -1 : 1;
+    addMatrixPixel(static_cast<uint8_t>(row + offsetRow), static_cast<uint8_t>(column), sideSpark);
+    return;
+  }
+
+  const int offsetColumn = ((noise >> 3) & 0x1U) == 0U ? -1 : 1;
+  addMatrixPixel(static_cast<uint8_t>(row), static_cast<uint8_t>(column + offsetColumn), sideSpark);
+}
+
+void renderLightningSegment(const LightningPoint &start, const LightningPoint &end, const RgbColor &coreColor, const RgbColor &glowColor, uint8_t glowScale) {
+  int row = start.row;
+  int column = start.column;
+  const int deltaRow = abs(end.row - start.row);
+  const int stepRow = start.row < end.row ? 1 : -1;
+  const int deltaColumn = -abs(end.column - start.column);
+  const int stepColumn = start.column < end.column ? 1 : -1;
+  int error = deltaRow + deltaColumn;
+
+  while (true) {
+    addLightningGlow(row, column, coreColor, glowColor, glowScale);
+    if (row == end.row && column == end.column) {
+      break;
+    }
+
+    const int doubledError = error * 2;
+    if (doubledError >= deltaColumn) {
+      error += deltaColumn;
+      row += stepRow;
+    }
+    if (doubledError <= deltaRow) {
+      error += deltaRow;
+      column += stepColumn;
+    }
+  }
+}
+
+void renderLightningPath(
+  const LightningPoint *points, uint8_t pointCount, uint8_t visiblePointCount, const RgbColor &strikeColor, const RgbColor &coreColor, uint8_t intensityScale, uint8_t glowScale
+) {
+  if (pointCount == 0U || visiblePointCount == 0U) {
+    return;
+  }
+
+  const uint8_t limitedPoints = min<uint8_t>(visiblePointCount, pointCount);
+  for (uint8_t pointIndex = 0U; pointIndex < limitedPoints; ++pointIndex) {
+    const uint8_t segmentScale =
+      static_cast<uint8_t>((static_cast<uint16_t>(intensityScale) * static_cast<uint16_t>(255U - ((limitedPoints - 1U - pointIndex) * 28U))) / 255U);
+    const RgbColor scaledStrike = scaleColor(strikeColor, segmentScale);
+    const RgbColor scaledCore = blendColors(scaledStrike, scaleColor(coreColor, segmentScale), 160);
+    addLightningGlow(points[pointIndex].row, points[pointIndex].column, scaledCore, scaledStrike, glowScale);
+
+    if (pointIndex + 1U < limitedPoints) {
+      renderLightningSegment(points[pointIndex], points[pointIndex + 1U], scaledCore, scaledStrike, glowScale);
+    }
+  }
+}
+
+void renderMatrixLightning(uint32_t now) {
+  clearMatrixFrame();
+
+  const uint32_t cycleMs = 1460U;
+  const uint32_t buildMs = 210U;
+  const uint32_t activeMs = 1260U;
+  const uint32_t local = now % cycleMs;
+  if (local >= activeMs) {
+    return;
+  }
+
+  const uint32_t eventIndex = now / cycleMs;
+  const uint32_t seed = hash32(eventIndex * 1877U + 311U);
+  const RgbColor strikeColor = lightningStrikeColor(seed);
+  const RgbColor coreColor = blendColors(strikeColor, makeColor(255, 255, 255), 188);
+
+  int startRow = 0;
+  int startColumn = 0;
+  int targetRow = 0;
+  int targetColumn = 0;
+  selectLightningEndpoints(seed, startRow, startColumn, targetRow, targetColumn);
+
+  LightningPoint trunk[12];
+  const uint8_t trunkCount = traceLightningPath(startRow, startColumn, targetRow, targetColumn, seed, 12U, trunk);
+  if (trunkCount == 0U) {
+    return;
+  }
+
+  const bool building = local < buildMs;
+  const float buildProgress = building ? (static_cast<float>(local) / static_cast<float>(buildMs)) : 1.0f;
+  float fadeProgress = 0.0f;
+  if (!building) {
+    fadeProgress = static_cast<float>(local - buildMs) / static_cast<float>(activeMs - buildMs);
+  }
+
+  const float fadeCurve = building ? 1.0f : powf(max(0.0f, 1.0f - fadeProgress), 1.35f);
+  const uint8_t strikeScale = static_cast<uint8_t>(255.0f * fadeCurve + 0.5f);
+  const uint8_t trunkVisible =
+    building ? max<uint8_t>(2U, static_cast<uint8_t>(1U + buildProgress * static_cast<float>(trunkCount - 1U))) : trunkCount;
+
+  renderLightningPath(trunk, trunkCount, trunkVisible, strikeColor, coreColor, strikeScale, 18U);
+
+  const uint8_t branchCount = 2U + static_cast<uint8_t>((seed >> 14) & 0x1U);
+  for (uint8_t branchIndex = 0U; branchIndex < branchCount; ++branchIndex) {
+    if (trunkCount < 4U) {
+      break;
+    }
+
+    const uint32_t branchSeed = hash32(seed + branchIndex * 719U + 97U);
+    const uint8_t anchorIndex = 1U + static_cast<uint8_t>(branchSeed % (trunkCount - 2U));
+    if (anchorIndex >= trunkVisible) {
+      continue;
+    }
+
+    const LightningPoint anchor = trunk[anchorIndex];
+    const LightningPoint next = trunk[min<uint8_t>(anchorIndex + 1U, trunkCount - 1U)];
+    const int trunkDeltaRow = next.row - anchor.row;
+    const int trunkDeltaColumn = next.column - anchor.column;
+    int branchTargetRow = anchor.row;
+    int branchTargetColumn = anchor.column;
+
+    if (abs(trunkDeltaColumn) >= abs(trunkDeltaRow)) {
+      branchTargetRow += ((branchSeed >> 5) & 0x1U) == 0U ? -2 - static_cast<int>((branchSeed >> 9) % 2U) : 2 + static_cast<int>((branchSeed >> 9) % 2U);
+      branchTargetColumn += trunkDeltaColumn == 0 ? (((branchSeed >> 7) & 0x1U) == 0U ? -1 : 1) : (trunkDeltaColumn > 0 ? 1 : -1) * (1 + static_cast<int>((branchSeed >> 11) % 2U));
+    } else {
+      branchTargetColumn += ((branchSeed >> 5) & 0x1U) == 0U ? -2 - static_cast<int>((branchSeed >> 9) % 2U) : 2 + static_cast<int>((branchSeed >> 9) % 2U);
+      branchTargetRow += trunkDeltaRow == 0 ? (((branchSeed >> 7) & 0x1U) == 0U ? -1 : 1) : (trunkDeltaRow > 0 ? 1 : -1) * (1 + static_cast<int>((branchSeed >> 11) % 2U));
+    }
+
+    branchTargetRow = constrain(branchTargetRow, 0, kMatrixRows - 1);
+    branchTargetColumn = constrain(branchTargetColumn, 0, kMatrixColumns - 1);
+    if (branchTargetRow == anchor.row && branchTargetColumn == anchor.column) {
+      continue;
+    }
+
+    LightningPoint branch[6];
+    const uint8_t branchPathCount = traceLightningPath(anchor.row, anchor.column, branchTargetRow, branchTargetColumn, branchSeed, 6U, branch);
+    if (branchPathCount < 2U) {
+      continue;
+    }
+
+    uint8_t branchVisible = branchPathCount;
+    if (building) {
+      const float anchorProgress = static_cast<float>(anchorIndex) / static_cast<float>(max<uint8_t>(1U, trunkCount - 1U));
+      if (buildProgress <= anchorProgress) {
+        continue;
+      }
+
+      const float localBranchProgress = min(1.0f, (buildProgress - anchorProgress) / max(0.12f, 1.0f - anchorProgress));
+      branchVisible = max<uint8_t>(2U, static_cast<uint8_t>(1U + localBranchProgress * static_cast<float>(branchPathCount - 1U)));
+    }
+
+    const uint8_t branchScale = static_cast<uint8_t>((static_cast<uint16_t>(strikeScale) * static_cast<uint16_t>(180U - branchIndex * 26U)) / 255U);
+    const RgbColor branchStrike = blendColors(strikeColor, colorWheel(static_cast<uint8_t>(branchSeed & 0xFFU)), 88);
+    const RgbColor branchCore = blendColors(branchStrike, makeColor(255, 255, 255), 176);
+    renderLightningPath(branch, branchPathCount, branchVisible, branchStrike, branchCore, branchScale, 10U);
+  }
+
+  const uint8_t flashScale = building ? static_cast<uint8_t>(160U + buildProgress * 95.0f) : static_cast<uint8_t>(120.0f * fadeCurve + 0.5f);
+  addLightningGlow(trunk[0].row, trunk[0].column, scaleColor(makeColor(255, 255, 255), flashScale), scaleColor(strikeColor, flashScale), 36U);
+  addLightningGlow(trunk[trunkVisible - 1U].row, trunk[trunkVisible - 1U].column, scaleColor(coreColor, flashScale), scaleColor(strikeColor, flashScale), 28U);
+}
+
 void renderDiagonalSpectrumSweep(uint8_t directionIndex, float progress, const RgbColor &sweepColor, const RgbColor &coreColor) {
   const float maxColumn = static_cast<float>(kMatrixColumns - 1U);
   const float maxRow = static_cast<float>(kMatrixRows - 1U);
-  const float diagonalOverscan = 2.6f;
+  const float diagonalOverscan = 2.0f;
   float entryX = 0.0f;
   float entryY = 0.0f;
   float exitX = maxColumn;
@@ -181,30 +446,29 @@ void renderDiagonalSpectrumSweep(uint8_t directionIndex, float progress, const R
   const float startY = entryY - motionY * diagonalOverscan;
   const float endX = exitX + motionX * diagonalOverscan;
   const float endY = exitY + motionY * diagonalOverscan;
-  const float centerX = startX + (endX - startX) * progress;
-  const float centerY = startY + (endY - startY) * progress;
-  const float segmentHalfLength = 4.2f;
+  const float headX = startX + (endX - startX) * progress;
+  const float headY = startY + (endY - startY) * progress;
+  const float perpendicularX = -motionY;
+  const float perpendicularY = motionX;
+  const uint8_t trailLevels[] = {255U, 208U, 164U, 124U, 88U, 58U, 34U};
 
-  for (uint8_t row = 0; row < kMatrixRows; ++row) {
-    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
-      const float relX = static_cast<float>(column) - centerX;
-      const float relY = static_cast<float>(row) - centerY;
-      const float axial = relX * motionX + relY * motionY;
-      const float axialDistance = fabsf(axial);
-      const float lateral = fabsf((-relX * motionY) + (relY * motionX));
+  for (uint8_t trailIndex = 0; trailIndex < sizeof(trailLevels); ++trailIndex) {
+    const float distance = static_cast<float>(trailIndex) * 1.18f;
+    const float x = headX - motionX * distance;
+    const float y = headY - motionY * distance;
+    const RgbColor strokeColor = trailIndex == 0U ? coreColor : scaleColor(sweepColor, trailLevels[trailIndex]);
+    addMatrixPixel(static_cast<uint8_t>(lroundf(y)), static_cast<uint8_t>(lroundf(x)), strokeColor);
 
-      if (lateral < 0.32f && axialDistance <= segmentHalfLength) {
-        const float endFade = 1.0f - min(axialDistance / segmentHalfLength, 1.0f);
-        const RgbColor highlight = blendColors(coreColor, makeColor(255, 255, 255), static_cast<uint8_t>(72.0f * endFade));
-        setMatrixPixel(row, column, highlight);
-      } else if (lateral < 0.66f && axialDistance <= segmentHalfLength + 0.55f) {
-        const float endFade = 1.0f - min(axialDistance / (segmentHalfLength + 0.55f), 1.0f);
-        setMatrixPixel(row, column, scaleColor(sweepColor, static_cast<uint8_t>(96.0f + endFade * 126.0f)));
-      } else if (lateral < 0.98f && axialDistance <= segmentHalfLength + 0.95f) {
-        const float haloFade = 1.0f - min((lateral - 0.66f) / 0.32f, 1.0f);
-        setMatrixPixel(row, column, scaleColor(sweepColor, static_cast<uint8_t>(18.0f + haloFade * 52.0f)));
-      }
+    if (trailIndex > 4U) {
+      continue;
     }
+
+    addMatrixPixel(
+      static_cast<uint8_t>(lroundf(y + perpendicularY * 0.72f)), static_cast<uint8_t>(lroundf(x + perpendicularX * 0.72f)), scaleColor(strokeColor, 84)
+    );
+    addMatrixPixel(
+      static_cast<uint8_t>(lroundf(y - perpendicularY * 0.72f)), static_cast<uint8_t>(lroundf(x - perpendicularX * 0.72f)), scaleColor(strokeColor, 84)
+    );
   }
 }
 
@@ -282,8 +546,8 @@ void renderMatrixScanner(uint32_t now) {
 void renderMatrixSpectrumScan(uint32_t now) {
   clearMatrixFrame();
 
-  const uint32_t cycleMs = 960U;
-  const uint32_t activeMs = 780U;
+  const uint32_t cycleMs = 980U;
+  const uint32_t activeMs = 820U;
   const uint32_t eventIndex = now / cycleMs;
   const uint32_t local = now % cycleMs;
 
@@ -302,48 +566,34 @@ void renderMatrixSpectrumScan(uint32_t now) {
     return;
   }
 
-  float directionX = 1.0f;
-  float directionY = 0.0f;
-  randomSweepDirection(directionIndex, directionX, directionY);
+  const uint8_t trailLevels[] = {255U, 176U, 104U, 48U};
 
-  const float maxColumn = static_cast<float>(kMatrixColumns - 1U);
-  const float maxRow = static_cast<float>(kMatrixRows - 1U);
-  const float projections[] = {
-    sweepProjection(0.0f, 0.0f, directionX, directionY),
-    sweepProjection(maxColumn, 0.0f, directionX, directionY),
-    sweepProjection(0.0f, maxRow, directionX, directionY),
-    sweepProjection(maxColumn, maxRow, directionX, directionY),
-  };
+  if (directionIndex < 2U) {
+    const float startColumn = directionIndex == 0U ? -1.5f : static_cast<float>(kMatrixColumns) + 0.5f;
+    const float endColumn = directionIndex == 0U ? static_cast<float>(kMatrixColumns) + 0.5f : -1.5f;
+    const int motion = directionIndex == 0U ? 1 : -1;
+    const float headColumn = startColumn + (endColumn - startColumn) * progress;
 
-  float minProjection = projections[0];
-  float maxProjection = projections[0];
-  for (uint8_t index = 1; index < 4; ++index) {
-    if (projections[index] < minProjection) {
-      minProjection = projections[index];
+    for (uint8_t trailIndex = 0; trailIndex < sizeof(trailLevels); ++trailIndex) {
+      const int column = lroundf(headColumn - static_cast<float>(motion * static_cast<int>(trailIndex)));
+      const RgbColor strokeColor = trailIndex == 0U ? coreColor : scaleColor(sweepColor, trailLevels[trailIndex]);
+      for (uint8_t row = 0; row < kMatrixRows; ++row) {
+        addMatrixPixel(row, static_cast<uint8_t>(column), strokeColor);
+      }
     }
-    if (projections[index] > maxProjection) {
-      maxProjection = projections[index];
-    }
+    return;
   }
 
-  const float overscan = 2.8f;
-  const float headProjection = (minProjection - overscan) + progress * ((maxProjection - minProjection) + overscan * 2.0f);
+  const float startRow = directionIndex == 2U ? -1.5f : static_cast<float>(kMatrixRows) + 0.5f;
+  const float endRow = directionIndex == 2U ? static_cast<float>(kMatrixRows) + 0.5f : -1.5f;
+  const int motion = directionIndex == 2U ? 1 : -1;
+  const float headRow = startRow + (endRow - startRow) * progress;
 
-  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+  for (uint8_t trailIndex = 0; trailIndex < sizeof(trailLevels); ++trailIndex) {
+    const int row = lroundf(headRow - static_cast<float>(motion * static_cast<int>(trailIndex)));
+    const RgbColor strokeColor = trailIndex == 0U ? coreColor : scaleColor(sweepColor, trailLevels[trailIndex]);
     for (uint8_t column = 0; column < kMatrixColumns; ++column) {
-      const float pixelProjection = sweepProjection(static_cast<float>(column), static_cast<float>(row), directionX, directionY);
-      const float delta = headProjection - pixelProjection;
-
-      if (delta >= -0.24f && delta < 0.34f) {
-        const float highlight = 1.0f - min(fabsf(delta - 0.04f) / 0.30f, 1.0f);
-        setMatrixPixel(row, column, scaleColor(coreColor, static_cast<uint8_t>(132.0f + highlight * 123.0f)));
-      } else if (delta >= 0.34f && delta < 1.22f) {
-        const float fade = 1.0f - ((delta - 0.34f) / 0.88f);
-        setMatrixPixel(row, column, scaleColor(sweepColor, static_cast<uint8_t>(94.0f + fade * 150.0f)));
-      } else if (delta >= 1.22f && delta < 2.20f) {
-        const float fade = 1.0f - ((delta - 1.22f) / 0.98f);
-        setMatrixPixel(row, column, scaleColor(sweepColor, static_cast<uint8_t>(22.0f + fade * 70.0f)));
-      }
+      addMatrixPixel(static_cast<uint8_t>(row), column, strokeColor);
     }
   }
 }
@@ -990,6 +1240,8 @@ void renderMatrixFrame(uint32_t now) {
     renderMatrixScanner(now);
   } else if (strcmp(activeMatrixPattern->id, "spectrum-scan") == 0) {
     renderMatrixSpectrumScan(now);
+  } else if (strcmp(activeMatrixPattern->id, "lightning") == 0) {
+    renderMatrixLightning(now);
   } else if (strcmp(activeMatrixPattern->id, "chase") == 0) {
     renderMatrixChase(now);
   } else if (strcmp(activeMatrixPattern->id, "pulse") == 0) {

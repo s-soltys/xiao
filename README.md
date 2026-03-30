@@ -8,7 +8,7 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - a multi-app layout with RGB Matrix, Solid Glow, Mood, Message, Bluetooth, and Device Info sections
 - a solid onboard status LED while the device is powered
 - a 6x10 WS2812B RGB matrix controller on `A0 / D0 / GPIO 0`
-- 20 selectable RGB matrix effects plus dedicated Solid Glow, Mood, and Message modes
+- 29 selectable RGB matrix effects plus dedicated Solid Glow, Mood, and Message modes
 - a BLE scanner
 - a device-status app with internal temperature and system telemetry
 - matrix effect, enabled state, brightness level, animation speed, dedicated glow color, mood, and message persistence across power cycles
@@ -418,25 +418,34 @@ In addition, the firmware supports a custom `morse-text` mode that is activated 
 The RGB Matrix app exposes these effects for the 6x10 WS2812B panel:
 
 1. `scanner`
-2. `chase`
-3. `pulse`
-4. `checker`
-5. `sparkle`
-6. `plasma`
-7. `prism`
-8. `ripple` (`Neon Ripple`)
-9. `meteor`
-10. `confetti` (`Confetti Burst`)
-11. `static`
-12. `lava`
-13. `spiral`
-14. `radar`
-15. `cross`
-16. `helix`
-17. `raster-trace`
-18. `zigzag-trace`
-19. `spiral-trace`
-20. `rain-drops`
+2. `spectrum-scan` (`Spectrum Scan`)
+3. `chase`
+4. `pulse`
+5. `checker`
+6. `sparkle`
+7. `plasma`
+8. `prism`
+9. `ripple` (`Neon Ripple`)
+10. `ripple-dual` (`Dual Ripple`)
+11. `ripple-core` (`Pulse Core`)
+12. `ripple-grid` (`Grid Ripple`)
+13. `ripple-surge` (`Neon Surge`)
+14. `meteor`
+15. `confetti` (`Confetti Burst`)
+16. `confetti-pop` (`Confetti Pop`)
+17. `confetti-fizz` (`Confetti Fizz`)
+18. `confetti-drift` (`Confetti Drift`)
+19. `confetti-shower` (`Confetti Shower`)
+20. `static`
+21. `lava`
+22. `spiral`
+23. `radar`
+24. `cross`
+25. `helix`
+26. `raster-trace`
+27. `zigzag-trace`
+28. `spiral-trace`
+29. `rain-drops`
 
 Dedicated matrix-only modes outside that effect picker:
 

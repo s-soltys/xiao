@@ -48,6 +48,15 @@ const char kWebAppSharedComponents[] PROGMEM = R"HTML(
           available: true,
         },
         {
+          id: 'wifi',
+          label: 'Wi-Fi Config',
+          description: 'Scan networks, save credentials, and order Wi-Fi priority for STA mode.',
+          routeBase: '/api/wifi',
+          stateRoute: '/api/wifi',
+          actionRoute: '/api/wifi/connect',
+          available: true,
+        },
+        {
           id: 'device',
           label: 'Device Info',
           description: 'Chip telemetry, internal temperature, memory, flash, and radio status.',
@@ -86,18 +95,29 @@ const char kWebAppSharedComponents[] PROGMEM = R"HTML(
         };
       }
 
-      function StatusCard({ label, value, tone }) {
+      function StatusCard({ label, value, tone, onClick, hint }) {
         const tones = {
           neutral: 'border-slate-200 bg-white/70 text-slate-700',
           online: 'border-teal-200 bg-teal-50/80 text-teal-800',
           offline: 'border-amber-200 bg-amber-50/80 text-amber-800',
         };
 
+        const TagName = onClick ? 'button' : 'div';
+
         return (
-          <div className={`rounded-2xl border px-4 py-3 shadow-sm ${tones[tone || 'neutral']}`}>
+          <TagName
+            type={onClick ? 'button' : undefined}
+            onClick={onClick}
+            className={[
+              'rounded-2xl border px-4 py-3 text-left shadow-sm',
+              tones[tone || 'neutral'],
+              onClick ? 'transition hover:-translate-y-0.5 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2' : '',
+            ].join(' ')}
+          >
             <div className="text-[11px] font-medium uppercase tracking-[0.22em] opacity-70">{label}</div>
             <div className="mt-1 text-sm font-semibold sm:text-base">{value}</div>
-          </div>
+            {hint ? <div className="mt-2 text-xs opacity-75">{hint}</div> : null}
+          </TagName>
         );
       }
 
@@ -179,6 +199,38 @@ const char kWebAppSharedComponents[] PROGMEM = R"HTML(
         }
 
         return formatUptime(ms);
+      }
+
+      function formatWifiSourceLabel(source) {
+        if (source === 'saved') {
+          return 'Saved priority list';
+        }
+
+        if (source === 'fallback') {
+          return 'wifi_config.h fallback';
+        }
+
+        return 'No active source';
+      }
+
+      function formatWifiStatusLabel(status) {
+        if (status === 'connected') {
+          return 'Connected';
+        }
+
+        if (status === 'connecting') {
+          return 'Connecting';
+        }
+
+        if (status === 'scanning') {
+          return 'Scanning';
+        }
+
+        if (status === 'error') {
+          return 'Needs attention';
+        }
+
+        return 'Disconnected';
       }
 
       const kMatrixBrightnessSliderMax = 255;

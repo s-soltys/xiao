@@ -7,6 +7,7 @@
 #include "ui/web_app_message_panel.h"
 #include "ui/web_app_matrix_panel.h"
 #include "ui/web_app_bluetooth_panel.h"
+#include "ui/web_app_wifi_panel.h"
 #include "ui/web_app_device_panel.h"
 #include "ui/web_app_app_shell.h"
 #include "ui/web_app_document_end.h"
@@ -26,6 +27,7 @@ inline void sendWebAppHtml(WebServer &server) {
   sendHtmlChunk(server, kWebAppMessagePanel);
   sendHtmlChunk(server, kWebAppMatrixPanel);
   sendHtmlChunk(server, kWebAppBluetoothPanel);
+  sendHtmlChunk(server, kWebAppWifiPanel);
   sendHtmlChunk(server, kWebAppDevicePanel);
   sendHtmlChunk(server, kWebAppAppShell);
   sendHtmlChunk(server, kWebAppDocumentEnd);

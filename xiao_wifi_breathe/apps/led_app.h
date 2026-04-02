@@ -13,7 +13,7 @@ String buildStateJson() {
   json += F("\",\"connected\":");
   json += WiFi.status() == WL_CONNECTED ? F("true") : F("false");
   json += F(",\"ssid\":\"");
-  json += jsonEscape(String(kWifiSsid));
+  json += jsonEscape(currentWifiLiveSsid());
   json += F("\",\"ip\":\"");
   json += jsonEscape(currentIpString());
   json += F("\",\"selectedPatternId\":\"");

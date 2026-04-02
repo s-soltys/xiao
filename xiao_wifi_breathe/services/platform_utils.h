@@ -1,7 +1,120 @@
 #pragma once
 
-bool hasWifiCredentials() {
-  return kWifiSsid[0] != '\0' && kWifiPassword[0] != '\0';
+bool hasFallbackWifiCredentials() {
+  return kWifiSsid[0] != '\0';
+}
+
+int findJsonFieldValueStart(const String &body, const char *fieldName) {
+  const String quotedField = String('"') + fieldName + '"';
+  const int fieldIndex = body.indexOf(quotedField);
+  if (fieldIndex < 0) {
+    return -1;
+  }
+
+  const int colonIndex = body.indexOf(':', fieldIndex + quotedField.length());
+  if (colonIndex < 0) {
+    return -1;
+  }
+
+  int valueStart = colonIndex + 1;
+  while (valueStart < body.length() && isspace(static_cast<unsigned char>(body.charAt(valueStart)))) {
+    ++valueStart;
+  }
+
+  return valueStart;
+}
+
+bool parseJsonQuotedString(const String &body, int startQuoteIndex, String &parsedValue, int &nextIndex) {
+  if (startQuoteIndex < 0 || startQuoteIndex >= body.length() || body.charAt(startQuoteIndex) != '"') {
+    return false;
+  }
+
+  parsedValue = "";
+  for (int index = startQuoteIndex + 1; index < body.length(); ++index) {
+    const char current = body.charAt(index);
+    if (current == '\\') {
+      if (index + 1 >= body.length()) {
+        return false;
+      }
+
+      const char escaped = body.charAt(++index);
+      switch (escaped) {
+        case '"':
+        case '\\':
+        case '/':
+          parsedValue += escaped;
+          break;
+        case 'n':
+          parsedValue += '\n';
+          break;
+        case 'r':
+          parsedValue += '\r';
+          break;
+        case 't':
+          parsedValue += '\t';
+          break;
+        case 'b':
+          parsedValue += '\b';
+          break;
+        case 'f':
+          parsedValue += '\f';
+          break;
+        default:
+          parsedValue += escaped;
+          break;
+      }
+      continue;
+    }
+
+    if (current == '"') {
+      nextIndex = index + 1;
+      return true;
+    }
+
+    parsedValue += current;
+  }
+
+  return false;
+}
+
+size_t extractJsonStringArrayField(const String &body, const char *fieldName, String *values, size_t maxValues) {
+  const int valueStart = findJsonFieldValueStart(body, fieldName);
+  if (valueStart < 0 || valueStart >= body.length() || body.charAt(valueStart) != '[') {
+    return 0;
+  }
+
+  size_t count = 0;
+  int index = valueStart + 1;
+
+  while (index < body.length()) {
+    while (index < body.length() && isspace(static_cast<unsigned char>(body.charAt(index)))) {
+      ++index;
+    }
+
+    if (index >= body.length() || body.charAt(index) == ']') {
+      return count;
+    }
+
+    if (body.charAt(index) == ',') {
+      ++index;
+      continue;
+    }
+
+    if (body.charAt(index) != '"' || count >= maxValues) {
+      return 0;
+    }
+
+    String parsedValue;
+    int nextIndex = index;
+    if (!parseJsonQuotedString(body, index, parsedValue, nextIndex)) {
+      return 0;
+    }
+
+    values[count++] = parsedValue;
+    index = nextIndex;
+  }
+
+  return 0;
 }
 
 uint8_t gammaCorrect(float normalizedBrightness) {
@@ -184,48 +297,19 @@ void sendJsonError(int statusCode, const String &message) {
 }
 
 String extractJsonStringField(const String &body, const char *fieldName) {
-  const String quotedField = String('"') + fieldName + '"';
-  const int fieldIndex = body.indexOf(quotedField);
-  if (fieldIndex < 0) {
+  const int valueStart = findJsonFieldValueStart(body, fieldName);
+  if (valueStart < 0 || valueStart >= body.length() || body.charAt(valueStart) != '"') {
     return String("");
   }
 
-  const int colonIndex = body.indexOf(':', fieldIndex + quotedField.length());
-  if (colonIndex < 0) {
-    return String("");
-  }
-
-  const int startQuoteIndex = body.indexOf('"', colonIndex + 1);
-  if (startQuoteIndex < 0) {
-    return String("");
-  }
-
-  const int endQuoteIndex = body.indexOf('"', startQuoteIndex + 1);
-  if (endQuoteIndex < 0) {
-    return String("");
-  }
-
-  return body.substring(startQuoteIndex + 1, endQuoteIndex);
+  String parsedValue;
+  int nextIndex = valueStart;
+  return parseJsonQuotedString(body, valueStart, parsedValue, nextIndex) ? parsedValue : String("");
 }
 
 int extractJsonIntField(const String &body, const char *fieldName) {
-  const String quotedField = String('"') + fieldName + '"';
-  const int fieldIndex = body.indexOf(quotedField);
-  if (fieldIndex < 0) {
-    return kJsonFieldMissing;
-  }
-
-  const int colonIndex = body.indexOf(':', fieldIndex + quotedField.length());
-  if (colonIndex < 0) {
-    return kJsonFieldMissing;
-  }
-
-  int valueStart = colonIndex + 1;
-  while (valueStart < body.length() && isspace(static_cast<unsigned char>(body.charAt(valueStart)))) {
-    ++valueStart;
-  }
-
-  if (valueStart >= body.length()) {
+  const int valueStart = findJsonFieldValueStart(body, fieldName);
+  if (valueStart < 0 || valueStart >= body.length()) {
     return kJsonFieldMissing;
   }
 
@@ -245,23 +329,8 @@ int extractJsonIntField(const String &body, const char *fieldName) {
 }
 
 int extractJsonBoolField(const String &body, const char *fieldName) {
-  const String quotedField = String('"') + fieldName + '"';
-  const int fieldIndex = body.indexOf(quotedField);
-  if (fieldIndex < 0) {
-    return kJsonBoolFieldMissing;
-  }
-
-  const int colonIndex = body.indexOf(':', fieldIndex + quotedField.length());
-  if (colonIndex < 0) {
-    return kJsonBoolFieldMissing;
-  }
-
-  int valueStart = colonIndex + 1;
-  while (valueStart < body.length() && isspace(static_cast<unsigned char>(body.charAt(valueStart)))) {
-    ++valueStart;
-  }
-
-  if (valueStart >= body.length()) {
+  const int valueStart = findJsonFieldValueStart(body, fieldName);
+  if (valueStart < 0 || valueStart >= body.length()) {
     return kJsonBoolFieldMissing;
   }
 

@@ -6,13 +6,14 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - a React frontend loaded from CDN
 - Tailwind styling loaded from CDN
 - a multi-app layout with RGB Matrix, Solid Glow, Mood, Message, Bluetooth, and Device Info sections
+- a Wi-Fi Config app for scanning nearby SSIDs, saving credentials, and ordering runtime network priority
 - a solid onboard status LED while the device is powered
 - a 6x10 WS2812B RGB matrix controller on `A0 / D0 / GPIO 0`
 - 30 selectable RGB matrix effects plus dedicated Solid Glow, Mood, and Message modes
 - a BLE scanner
 - a device-status app with internal temperature and system telemetry
 - matrix effect, enabled state, brightness level, animation speed, dedicated glow color, mood, and message persistence across power cycles
-- automatic Wi-Fi station startup on boot
+- automatic Wi-Fi station startup on boot using saved networks first, then `wifi_config.h` fallback
 - local discovery at `http://xiao.local/` after Wi-Fi connects
 
 ## What It Does
@@ -23,8 +24,9 @@ On boot, the firmware:
 - initializes the BLE scanner
 - turns the onboard LED on as a power indicator
 - loads the saved RGB matrix effect, enabled state, brightness, animation speed, dedicated glow color, mood, and message
+- loads saved runtime Wi-Fi networks and their priority order
 - initializes the WS2812B matrix driver on `A0 / D0 / GPIO 0`
-- starts Wi-Fi in station mode using `wifi_config.h`
+- starts Wi-Fi in station mode using saved networks first and `wifi_config.h` as fallback
 - starts an HTTP server on port `80` after Wi-Fi connects
 - starts mDNS and advertises the device as `xiao.local`
 - keeps the RGB matrix running in a non-blocking loop while the onboard LED stays on
@@ -48,7 +50,10 @@ The matrix app lets you switch RGB panel effects instantly and correct the physi
 
 ## Wi-Fi Configuration
 
-The firmware reads credentials from [wifi_config.h](xiao_wifi_breathe/wifi_config.h), which is ignored by git.
+The firmware supports two Wi-Fi sources:
+
+- runtime-saved networks from the `Wi-Fi Config` app, retried in saved priority order
+- compile-time fallback credentials from [wifi_config.h](xiao_wifi_breathe/wifi_config.h), which is ignored by git
 
 1. Copy [wifi_config.example.h](xiao_wifi_breathe/wifi_config.example.h) to `xiao_wifi_breathe/wifi_config.h` if needed.
 2. Set your Wi-Fi credentials:
@@ -59,12 +64,14 @@ constexpr char kWifiPassword[] = "your-password";
 ```
 
 3. Rebuild and upload the firmware.
+4. Once the device is reachable, open the `Wi-Fi Config` app to scan, save, reorder, or forget runtime networks without reflashing.
 
 If `wifi_config.h` is empty or invalid:
 
 - the LED patterns still work
 - the last saved pattern still loads
 - no fallback access point is started
+- the device will still try any runtime-saved networks first
 - the device will not expose the web app until it joins Wi-Fi
 
 ## Build And Upload
@@ -116,16 +123,17 @@ The frontend is now split into an app shell and per-app panels, and the shell di
 
 ## Apps
 
-The web UI is split into six visible apps:
+The web UI is split into seven visible apps:
 
 - `RGB Matrix`: controls a 6x10 WS2812B panel connected to `A0 / D0 / GPIO 0`
 - `Solid Glow`: picks one dedicated glow color and fills the entire matrix with it
 - `Mood App`: shows one saved mood icon on the RGB matrix
 - `Message App`: scrolls a saved text message right-to-left on the RGB matrix
 - `Bluetooth Scanner`: scans nearby BLE advertisers and shows scan results
+- `Wi-Fi Config`: shows connection status, scans nearby SSIDs, stores credentials, and reorders Wi-Fi priority
 - `Device Info`: shows internal chip temperature and device telemetry
 
-Shared matrix power, brightness, and animation speed live in the header and apply to RGB Matrix, Solid Glow, Mood, and Message together.
+Shared matrix power, brightness, and animation speed live in the header and apply to RGB Matrix, Solid Glow, Mood, and Message together. The header network card opens the `Wi-Fi Config` app directly.
 
 The firmware also keeps the legacy onboard LED state routes (`/api/state`, `/api/pattern`, `/api/morse`) as system endpoints even though they are not shown as a visible tab in the current UI.
 
@@ -176,6 +184,8 @@ Returns current device state:
 }
 ```
 
+`ssid` reports the currently connected live network. It is empty when the station is disconnected.
+
 ### `POST /api/pattern`
 
 Request body:
@@ -219,6 +229,84 @@ Returns BLE scanner state:
 ### `POST /api/bluetooth/scan`
 
 Starts a BLE scan and returns the updated scanner state JSON.
+
+### `GET /api/wifi`
+
+Returns Wi-Fi app state including:
+
+- current Wi-Fi status, active source, target SSID, and last error
+- current hostname and IP
+- saved networks in retry priority order
+- latest scan timestamps and scan results
+
+Example:
+
+```json
+{
+  "available": true,
+  "status": "connected",
+  "connected": true,
+  "connecting": false,
+  "scanning": false,
+  "hostname": "xiao.local",
+  "ssid": "office-wifi",
+  "targetSsid": "office-wifi",
+  "ip": "192.168.1.10",
+  "activeSource": "saved",
+  "lastError": "",
+  "fallbackConfigured": true,
+  "savedNetworks": [
+    { "ssid": "office-wifi", "priority": 1, "connected": true }
+  ],
+  "scanResults": [
+    { "ssid": "office-wifi", "rssi": -48, "encryptionType": "wpa2-psk", "known": true }
+  ]
+}
+```
+
+### `POST /api/wifi/scan`
+
+Starts an async Wi-Fi scan and returns the updated Wi-Fi state JSON.
+
+### `POST /api/wifi/connect`
+
+Request body:
+
+```json
+{ "ssid": "office-wifi", "password": "super-secret" }
+```
+
+Effect:
+
+- saves or updates the network at priority 1
+- starts an immediate connection attempt
+- returns the updated Wi-Fi state JSON
+
+### `POST /api/wifi/reorder`
+
+Request body:
+
+```json
+{ "ssids": ["office-wifi", "lab-backup"] }
+```
+
+Effect:
+
+- rewrites the saved Wi-Fi priority order
+- returns the updated Wi-Fi state JSON
+
+### `POST /api/wifi/forget`
+
+Request body:
+
+```json
+{ "ssid": "lab-backup" }
+```
+
+Effect:
+
+- removes the saved network from runtime storage
+- returns the updated Wi-Fi state JSON
 
 ### `GET /api/device`
 
@@ -491,6 +579,13 @@ The RGB matrix settings are persisted in:
 - key: `matrixMood`
 - key: `matrixMessage`
 
+The runtime Wi-Fi network list is persisted in:
+
+- namespace: `xiao-app`
+- key: `wifiCount`
+- key prefix: `wifiSsid`
+- key prefix: `wifiPass`
+
 ## Implementation Notes
 
 - The onboard LED is driven as active-low.
@@ -499,6 +594,7 @@ The RGB matrix settings are persisted in:
 - Shared matrix power, brightness, and animation speed apply to every matrix-facing app.
 - The web app is embedded in flash via PROGMEM; there is no SPIFFS or LittleFS dependency.
 - Wi-Fi is STA-only.
+- Saved Wi-Fi networks are retried in priority order before `wifi_config.h` fallback is attempted.
 - mDNS is started only after Wi-Fi connects.
 - The hostname shown and advertised is `xiao.local`.
 - Morse input supports letters, digits, spaces, and `. , ? ! - / @ ( )`.
@@ -521,7 +617,7 @@ The RGB matrix settings are persisted in:
 
 If `http://xiao.local/` does not open:
 
-- confirm `wifi_config.h` contains valid credentials
+- confirm either a saved Wi-Fi network or `wifi_config.h` fallback has valid credentials
 - confirm the board joined your LAN in serial output
 - try the device IP shown in the serial log or `/api/state`
 - confirm your client OS/network supports mDNS `.local` resolution

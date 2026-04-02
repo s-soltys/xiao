@@ -51,6 +51,7 @@ constexpr char kMatrixDefaultColorHex[] = "#22c55e";
 constexpr char kPreferenceNamespace[] = "xiao-app";
 constexpr char kPatternPreferenceKey[] = "pattern";
 constexpr char kMorseTextPreferenceKey[] = "morseText";
+constexpr char kWifiProfileCountPreferenceKey[] = "wifiCount";
 constexpr char kMatrixPatternPreferenceKey[] = "matrixPattern";
 constexpr char kMatrixEnabledPreferenceKey[] = "matrixEnabled";
 constexpr char kMatrixBrightnessPreferenceKey[] = "matrixBright";
@@ -59,6 +60,8 @@ constexpr char kMatrixColorPreferenceKey[] = "matrixColor";
 constexpr char kMatrixMappingPreferenceKey[] = "matrixMap";
 constexpr char kMatrixMoodPreferenceKey[] = "matrixMood";
 constexpr char kMatrixMessagePreferenceKey[] = "matrixMessage";
+constexpr char kWifiSsidPreferenceKeyPrefix[] = "wifiSsid";
+constexpr char kWifiPasswordPreferenceKeyPrefix[] = "wifiPass";
 constexpr char kMorsePatternId[] = "morse-text";
 constexpr char kMorsePatternLabel[] = "Custom Morse";
 constexpr char kMatrixSolidPatternId[] = "solid";
@@ -71,10 +74,13 @@ constexpr char kDefaultMatrixMessage[] = "HELLO";
 constexpr int kJsonFieldMissing = -1000;
 constexpr int kJsonBoolFieldMissing = -1;
 constexpr size_t kMaxMatrixMessageLength = 64;
+constexpr size_t kMaxSavedWifiNetworks = 8;
+constexpr size_t kMaxWifiScanResults = 20;
 constexpr uint8_t kMatrixGlyphWidth = 3;
 constexpr uint8_t kMatrixWideGlyphWidth = 5;
 constexpr uint8_t kMatrixGlyphSpacing = 1;
 constexpr uint16_t kMatrixMessageScrollMs = 110;
+constexpr uint32_t kWifiConnectTimeoutMs = 12000;
 
 struct PatternStep {
   uint8_t brightness;
@@ -107,6 +113,18 @@ struct BleScanResultEntry {
   bool scannable;
   bool legacy;
   uint8_t addressType;
+};
+
+struct SavedWifiNetwork {
+  String ssid;
+  String password;
+};
+
+struct WifiScanResultEntry {
+  String ssid;
+  int32_t rssi;
+  wifi_auth_mode_t encryptionType;
+  bool known;
 };
 
 struct RgbColor {
@@ -153,6 +171,8 @@ PatternStep morseSteps[kMaxMorseSteps];
 PatternDefinition morsePattern = {kMorsePatternId, kMorsePatternLabel, PatternMode::kSequence, morseSteps, 0, 0};
 BleScanResultEntry bleResults[kMaxBleDevices];
 RgbColor matrixFrame[kMatrixLedCount];
+SavedWifiNetwork savedWifiNetworks[kMaxSavedWifiNetworks];
+WifiScanResultEntry wifiScanResults[kMaxWifiScanResults];
 
 const PatternDefinition *activePattern = &kPatterns[0];
 const MatrixPatternDefinition *activeMatrixPattern = &kMatrixPatterns[1];
@@ -167,11 +187,16 @@ uint8_t matrixBrightness = kMatrixDefaultBrightness;
 uint8_t matrixAnimationSpeed = kMatrixDefaultAnimationSpeed;
 size_t activeStepIndex = 0;
 size_t bleResultCount = 0;
+size_t savedWifiNetworkCount = 0;
+size_t wifiScanResultCount = 0;
 uint32_t activeStepStartedAtMs = 0;
 uint32_t lastWifiAttemptMs = 0;
 uint32_t bleScanStartedAtMs = 0;
 uint32_t bleScanCompletedAtMs = 0;
 uint32_t lastMatrixFrameAtMs = 0;
+uint32_t wifiScanStartedAtMs = 0;
+uint32_t wifiScanCompletedAtMs = 0;
+uint32_t wifiConnectStartedAtMs = 0;
 wl_status_t lastWifiStatus = WL_IDLE_STATUS;
 bool wifiWarningPrinted = false;
 bool webServerStarted = false;
@@ -180,7 +205,16 @@ bool bleReady = false;
 bool bleScanInProgress = false;
 bool matrixReady = false;
 bool matrixFrameDirty = true;
+bool wifiScanInProgress = false;
+bool wifiConnectInProgress = false;
+bool wifiCurrentTargetIsFallback = false;
+bool wifiImmediateConnectPending = false;
 String bleScanError;
+String wifiLastError;
+String wifiCurrentTargetSsid;
+int wifiCurrentTargetProfileIndex = -1;
+int wifiImmediateConnectProfileIndex = -1;
+int wifiAttemptCursor = 0;
 RgbColor matrixBaseColor = {0x22, 0xc5, 0x5e};
 
 void applyMatrixFrameNow();
@@ -190,6 +224,7 @@ void applyMatrixFrameNow();
 #include "services/bluetooth_service.h"
 #include "services/matrix_service.h"
 #include "services/matrix_effects_service.h"
+#include "services/wifi_runtime_service.h"
 #include "apps/led_app.h"
 #include "apps/glow_app.h"
 #include "apps/matrix_app.h"
@@ -197,8 +232,8 @@ void applyMatrixFrameNow();
 #include "apps/message_app.h"
 #include "apps/bluetooth_app.h"
 #include "apps/device_app.h"
+#include "apps/wifi_app.h"
 #include "apps/app_registry.h"
-#include "services/wifi_runtime_service.h"
 
 void setupFirmware() {
   Serial.begin(115200);
@@ -210,6 +245,7 @@ void setupFirmware() {
   initializeBluetoothScanner();
 
   preferences.begin(kPreferenceNamespace, false);
+  loadSavedWifiNetworks();
   loadSavedPattern();
   loadSavedMatrixState();
   initializeMatrix();

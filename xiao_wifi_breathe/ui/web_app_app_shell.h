@@ -11,6 +11,7 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
         const [matrixState, setMatrixState] = useState(null);
         const [glowState, setGlowState] = useState(null);
         const [bluetoothState, setBluetoothState] = useState(null);
+        const [wifiState, setWifiState] = useState(null);
         const [deviceState, setDeviceState] = useState(null);
         const [loading, setLoading] = useState(true);
         const [refreshing, setRefreshing] = useState(false);
@@ -20,8 +21,11 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
         const [matrixOutputSyncing, setMatrixOutputSyncing] = useState(false);
         const [glowBusy, setGlowBusy] = useState(false);
         const [scanBusy, setScanBusy] = useState(false);
+        const [wifiBusy, setWifiBusy] = useState(false);
+        const [wifiScanBusy, setWifiScanBusy] = useState(false);
         const [error, setError] = useState('');
         const [messageInput, setMessageInput] = useState('');
+        const [wifiForm, setWifiForm] = useState({ ssid: '', password: '' });
         const [glowColor, setGlowColor] = useState('#22c55e');
         const [matrixBrightnessSlider, setMatrixBrightnessSlider] = useState(() => sliderValueFromMatrixBrightness(48));
         const [matrixAnimationSpeedSlider, setMatrixAnimationSpeedSlider] = useState('100');
@@ -90,6 +94,12 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
           return payload;
         }
 
+        async function fetchWifiState() {
+          const payload = await fetchJson('/api/wifi', { cache: 'no-store' });
+          setWifiState(payload);
+          return payload;
+        }
+
         async function fetchDeviceState() {
           const payload = await fetchJson('/api/device', { cache: 'no-store' });
           setDeviceState(payload);
@@ -111,6 +121,7 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
             fetchMatrixState(true),
             fetchGlowState(),
             fetchBluetoothState(),
+            fetchWifiState(),
             fetchDeviceState(),
           ]);
 
@@ -146,6 +157,22 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
 
           return () => window.clearInterval(intervalId);
         }, [bluetoothState?.scanning]);
+
+        useEffect(() => {
+          if (activeApp !== 'wifi' && !wifiState?.scanning && !wifiState?.connecting) {
+            return undefined;
+          }
+
+          const intervalId = window.setInterval(() => {
+            fetchWifiState()
+              .then(() => fetchSystemState())
+              .catch((requestError) => {
+                setError(requestError.message || 'Unable to refresh Wi-Fi state.');
+              });
+          }, 1500);
+
+          return () => window.clearInterval(intervalId);
+        }, [activeApp, wifiState?.connecting, wifiState?.scanning]);
 
         useEffect(() => {
           if (activeApp !== 'device') {
@@ -379,6 +406,123 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
           }
         }
 
+        function updateWifiForm(field, value) {
+          setWifiForm((current) => ({
+            ...current,
+            [field]: value,
+          }));
+        }
+
+        async function applyWifiConnect(event) {
+          event.preventDefault();
+          setWifiBusy(true);
+          setError('');
+
+          try {
+            const payload = await fetchJson('/api/wifi/connect', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                ssid: wifiForm.ssid,
+                password: wifiForm.password,
+              }),
+            });
+            setWifiState(payload);
+            setWifiForm((current) => ({
+              ...current,
+              password: '',
+            }));
+            await fetchSystemState();
+          } catch (requestError) {
+            setError(requestError.message || 'Unable to save and connect to that Wi-Fi network.');
+          } finally {
+            setWifiBusy(false);
+          }
+        }
+
+        async function startWifiScan() {
+          setWifiScanBusy(true);
+          setError('');
+
+          try {
+            const payload = await fetchJson('/api/wifi/scan', {
+              method: 'POST',
+            });
+            setWifiState(payload);
+          } catch (requestError) {
+            setError(requestError.message || 'Unable to start the Wi-Fi scan.');
+          } finally {
+            setWifiScanBusy(false);
+          }
+        }
+
+        async function moveSavedWifiNetwork(ssid, direction) {
+          const savedNetworks = (wifiState?.savedNetworks || []).slice();
+          const currentIndex = savedNetworks.findIndex((network) => network.ssid === ssid);
+          if (currentIndex < 0) {
+            return;
+          }
+
+          const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+          if (targetIndex < 0 || targetIndex >= savedNetworks.length) {
+            return;
+          }
+
+          const reordered = savedNetworks.map((network) => network.ssid);
+          const currentSsid = reordered[currentIndex];
+          reordered[currentIndex] = reordered[targetIndex];
+          reordered[targetIndex] = currentSsid;
+
+          setWifiBusy(true);
+          setError('');
+
+          try {
+            const payload = await fetchJson('/api/wifi/reorder', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ ssids: reordered }),
+            });
+            setWifiState(payload);
+          } catch (requestError) {
+            setError(requestError.message || 'Unable to reorder the saved Wi-Fi networks.');
+          } finally {
+            setWifiBusy(false);
+          }
+        }
+
+        async function forgetWifiNetwork(ssid) {
+          setWifiBusy(true);
+          setError('');
+
+          try {
+            const payload = await fetchJson('/api/wifi/forget', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ ssid }),
+            });
+            setWifiState(payload);
+            setWifiForm((current) =>
+              current.ssid === ssid
+                ? {
+                    ssid: '',
+                    password: '',
+                  }
+                : current
+            );
+            await fetchSystemState();
+          } catch (requestError) {
+            setError(requestError.message || 'Unable to forget the saved Wi-Fi network.');
+          } finally {
+            setWifiBusy(false);
+          }
+        }
+
         function renderActivePanel() {
           if (activeApp === 'mood') {
             return <MoodAppPanel moodState={moodState} matrixState={matrixState} moodBusyId={moodBusyId} onSelectMood={activateMood} />;
@@ -436,6 +580,22 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
             return <BluetoothAppPanel bluetoothState={bluetoothState} scanBusy={scanBusy} onStartScan={startBluetoothScan} />;
           }
 
+          if (activeApp === 'wifi') {
+            return (
+              <WifiAppPanel
+                wifiState={wifiState}
+                wifiBusy={wifiBusy}
+                wifiScanBusy={wifiScanBusy}
+                wifiForm={wifiForm}
+                onWifiFormChange={updateWifiForm}
+                onApplyWifiConnect={applyWifiConnect}
+                onStartWifiScan={startWifiScan}
+                onMoveSavedNetwork={moveSavedWifiNetwork}
+                onForgetWifiNetwork={forgetWifiNetwork}
+              />
+            );
+          }
+
           return <DeviceAppPanel deviceState={deviceState} />;
         }
 
@@ -480,8 +640,16 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
                     />
                     <StatusCard
                       label="Network"
-                      value={systemState?.connected ? `${systemState.ssid} / ${systemState.ip}` : 'STA mode retrying'}
-                      tone={systemState?.connected ? 'neutral' : 'offline'}
+                      value={
+                        systemState?.connected
+                          ? `${systemState.ssid} / ${systemState.ip}`
+                          : wifiState?.targetSsid
+                            ? `Connecting to ${wifiState.targetSsid}`
+                            : 'STA mode retrying'
+                      }
+                      tone={systemState?.connected ? 'neutral' : wifiState?.lastError ? 'offline' : 'neutral'}
+                      hint="Open Wi-Fi Config"
+                      onClick={() => setActiveApp('wifi')}
                     />
                     <StatusCard
                       label="Hardware"

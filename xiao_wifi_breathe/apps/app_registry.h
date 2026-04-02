@@ -83,6 +83,17 @@ const AppDefinition kRegisteredApps[] = {
     registerBluetoothAppRoutes,
   },
   {
+    "wifi",
+    "Wi-Fi Config",
+    "Scan networks, save credentials, and order Wi-Fi priority for STA mode.",
+    "/api/wifi",
+    "/api/wifi",
+    "/api/wifi/connect",
+    true,
+    wifiAppAvailable,
+    registerWifiAppRoutes,
+  },
+  {
     "device",
     "Device Info",
     "Chip telemetry, internal temperature, memory, flash, and radio status.",

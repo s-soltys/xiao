@@ -506,35 +506,36 @@ In addition, the firmware supports a custom `morse-text` mode that is activated 
 The RGB Matrix app exposes these effects for the 6x10 WS2812B panel:
 
 1. `scanner`
-2. `spectrum-scan` (`Spectrum Scan`, cycles top-down, right-left, bottom-top, left-right)
-3. `lightning` (`Lightning Trees`)
-4. `chase`
-5. `pulse`
-6. `checker`
-7. `sparkle`
-8. `plasma`
-9. `prism`
-10. `ripple` (`Neon Ripple`)
-11. `ripple-dual` (`Dual Ripple`)
-12. `ripple-core` (`Pulse Core`)
-13. `ripple-grid` (`Grid Ripple`)
-14. `ripple-surge` (`Neon Surge`)
-15. `meteor`
-16. `confetti` (`Confetti Burst`)
-17. `confetti-pop` (`Confetti Pop`)
-18. `confetti-fizz` (`Confetti Fizz`)
-19. `confetti-drift` (`Confetti Drift`)
-20. `confetti-shower` (`Confetti Shower`)
-21. `static`
-22. `lava`
-23. `spiral`
-24. `radar`
-25. `cross`
-26. `helix`
-27. `raster-trace`
-28. `zigzag-trace`
-29. `spiral-trace`
-30. `rain-drops`
+2. `spectrum-scan` (`Spectrum Scan`, random color and 4-way sweep directions)
+3. `spectrum-storm` (`Spectrum Storm`, super-fast 4-direction whole-line sweep, brief full-board hold, then fade-out)
+4. `lightning` (`Lightning Trees`)
+5. `chase`
+6. `pulse`
+7. `checker`
+8. `sparkle`
+9. `plasma`
+10. `prism`
+11. `ripple` (`Neon Ripple`)
+12. `ripple-dual` (`Dual Ripple`)
+13. `ripple-core` (`Pulse Core`)
+14. `ripple-grid` (`Grid Ripple`)
+15. `ripple-surge` (`Neon Surge`)
+16. `meteor`
+17. `confetti` (`Confetti Burst`)
+18. `confetti-pop` (`Confetti Pop`)
+19. `confetti-fizz` (`Confetti Fizz`)
+20. `confetti-drift` (`Confetti Drift`)
+21. `confetti-shower` (`Confetti Shower`)
+22. `static`
+23. `lava`
+24. `spiral`
+25. `radar`
+26. `cross`
+27. `helix`
+28. `raster-trace`
+29. `zigzag-trace`
+30. `spiral-trace`
+31. `rain-drops`
 
 Dedicated matrix-only modes outside that effect picker:
 

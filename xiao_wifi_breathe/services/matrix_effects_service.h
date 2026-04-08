@@ -12,6 +12,12 @@ RgbColor matrixEffectBaseColor() {
   if (strcmp(activeMatrixPattern->id, "scanner") == 0) {
     return makeColor(0x2d, 0xd4, 0xbf);
   }
+  if (strcmp(activeMatrixPattern->id, "spectrum-scan") == 0) {
+    return makeColor(0xf9, 0xa8, 0xd4);
+  }
+  if (strcmp(activeMatrixPattern->id, "spectrum-storm") == 0) {
+    return makeColor(0xc4, 0xb5, 0xfd);
+  }
   if (strcmp(activeMatrixPattern->id, "lightning") == 0) {
     return makeColor(0x67, 0xe8, 0xf9);
   }
@@ -167,6 +173,37 @@ void selectLightningEndpoints(uint32_t seed, int &startRow, int &startColumn, in
       startColumn = kMatrixColumns - 1;
       targetRow = static_cast<int>(1U + ((seed >> 18) % 2U));
       targetColumn = static_cast<int>(1U + ((seed >> 22) % 2U));
+      break;
+  }
+}
+
+void selectCardinalLightningEndpoints(uint32_t seed, int &startRow, int &startColumn, int &targetRow, int &targetColumn) {
+  const uint8_t direction = static_cast<uint8_t>(seed & 0x3U);
+
+  switch (direction) {
+    case 0:
+      startRow = static_cast<int>((seed >> 8) % kMatrixRows);
+      startColumn = 0;
+      targetRow = static_cast<int>((seed >> 16) % kMatrixRows);
+      targetColumn = static_cast<int>(kMatrixColumns - 2U - ((seed >> 20) % 2U));
+      break;
+    case 1:
+      startRow = static_cast<int>((seed >> 8) % kMatrixRows);
+      startColumn = kMatrixColumns - 1;
+      targetRow = static_cast<int>((seed >> 16) % kMatrixRows);
+      targetColumn = static_cast<int>(1U + ((seed >> 20) % 2U));
+      break;
+    case 2:
+      startRow = 0;
+      startColumn = static_cast<int>((seed >> 8) % kMatrixColumns);
+      targetRow = static_cast<int>(kMatrixRows - 2U - ((seed >> 18) % 2U));
+      targetColumn = static_cast<int>((seed >> 22) % kMatrixColumns);
+      break;
+    default:
+      startRow = kMatrixRows - 1;
+      startColumn = static_cast<int>((seed >> 8) % kMatrixColumns);
+      targetRow = static_cast<int>(1U + ((seed >> 18) % 2U));
+      targetColumn = static_cast<int>((seed >> 22) % kMatrixColumns);
       break;
   }
 }
@@ -482,6 +519,100 @@ void renderMatrixScanner(uint32_t now) {
   }
 }
 
+void renderDiagonalSpectrumSweep(uint8_t directionIndex, float progress, const RgbColor &sweepColor, const RgbColor &coreColor) {
+  const float maxColumn = static_cast<float>(kMatrixColumns - 1U);
+  const float maxRow = static_cast<float>(kMatrixRows - 1U);
+  const float diagonalOverscan = 2.0f;
+  float entryX = 0.0f;
+  float entryY = 0.0f;
+  float exitX = maxColumn;
+  float exitY = maxRow;
+
+  if (directionIndex == 5U) {
+    entryX = maxColumn;
+    entryY = maxRow;
+    exitX = 0.0f;
+    exitY = 0.0f;
+  } else if (directionIndex == 6U) {
+    entryX = maxColumn;
+    entryY = 0.0f;
+    exitX = 0.0f;
+    exitY = maxRow;
+  } else if (directionIndex == 7U) {
+    entryX = 0.0f;
+    entryY = maxRow;
+    exitX = maxColumn;
+    exitY = 0.0f;
+  }
+
+  const float deltaX = exitX - entryX;
+  const float deltaY = exitY - entryY;
+  const float motionLength = sqrtf(deltaX * deltaX + deltaY * deltaY);
+  const float motionX = deltaX / motionLength;
+  const float motionY = deltaY / motionLength;
+  const float startX = entryX - motionX * diagonalOverscan;
+  const float startY = entryY - motionY * diagonalOverscan;
+  const float endX = exitX + motionX * diagonalOverscan;
+  const float endY = exitY + motionY * diagonalOverscan;
+  const float headX = startX + (endX - startX) * progress;
+  const float headY = startY + (endY - startY) * progress;
+  const float perpendicularX = -motionY;
+  const float perpendicularY = motionX;
+  const uint8_t trailLevels[] = {255U, 208U, 164U, 124U, 88U, 58U, 34U};
+
+  for (uint8_t trailIndex = 0; trailIndex < sizeof(trailLevels); ++trailIndex) {
+    const float distance = static_cast<float>(trailIndex) * 1.18f;
+    const float x = headX - motionX * distance;
+    const float y = headY - motionY * distance;
+    const RgbColor strokeColor = trailIndex == 0U ? coreColor : scaleColor(sweepColor, trailLevels[trailIndex]);
+    addMatrixPixel(static_cast<uint8_t>(lroundf(y)), static_cast<uint8_t>(lroundf(x)), strokeColor);
+
+    if (trailIndex > 4U) {
+      continue;
+    }
+
+    addMatrixPixel(
+      static_cast<uint8_t>(lroundf(y + perpendicularY * 0.72f)), static_cast<uint8_t>(lroundf(x + perpendicularX * 0.72f)), scaleColor(strokeColor, 84)
+    );
+    addMatrixPixel(
+      static_cast<uint8_t>(lroundf(y - perpendicularY * 0.72f)), static_cast<uint8_t>(lroundf(x - perpendicularX * 0.72f)), scaleColor(strokeColor, 84)
+    );
+  }
+}
+
+void renderCardinalSpectrumSweep(uint8_t directionIndex, float progress, const RgbColor &sweepColor, const RgbColor &coreColor) {
+  const uint8_t trailLevels[] = {255U, 176U, 104U, 48U};
+
+  if (directionIndex < 2U) {
+    const float startColumn = directionIndex == 0U ? -1.5f : static_cast<float>(kMatrixColumns) + 0.5f;
+    const float endColumn = directionIndex == 0U ? static_cast<float>(kMatrixColumns) + 0.5f : -1.5f;
+    const int motion = directionIndex == 0U ? 1 : -1;
+    const float headColumn = startColumn + (endColumn - startColumn) * progress;
+
+    for (uint8_t trailIndex = 0; trailIndex < sizeof(trailLevels); ++trailIndex) {
+      const int column = lroundf(headColumn - static_cast<float>(motion * static_cast<int>(trailIndex)));
+      const RgbColor strokeColor = trailIndex == 0U ? coreColor : scaleColor(sweepColor, trailLevels[trailIndex]);
+      for (uint8_t row = 0; row < kMatrixRows; ++row) {
+        addMatrixPixel(row, static_cast<uint8_t>(column), strokeColor);
+      }
+    }
+    return;
+  }
+
+  const float startRow = directionIndex == 2U ? -1.5f : static_cast<float>(kMatrixRows) + 0.5f;
+  const float endRow = directionIndex == 2U ? static_cast<float>(kMatrixRows) + 0.5f : -1.5f;
+  const int motion = directionIndex == 2U ? 1 : -1;
+  const float headRow = startRow + (endRow - startRow) * progress;
+
+  for (uint8_t trailIndex = 0; trailIndex < sizeof(trailLevels); ++trailIndex) {
+    const int row = lroundf(headRow - static_cast<float>(motion * static_cast<int>(trailIndex)));
+    const RgbColor strokeColor = trailIndex == 0U ? coreColor : scaleColor(sweepColor, trailLevels[trailIndex]);
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      addMatrixPixel(static_cast<uint8_t>(row), column, strokeColor);
+    }
+  }
+}
+
 void renderMatrixSpectrumScan(uint32_t now) {
   clearMatrixFrame();
 
@@ -495,38 +626,64 @@ void renderMatrixSpectrumScan(uint32_t now) {
   }
 
   const uint32_t seed = hash32(eventIndex * 1181U + 97U);
-  const uint8_t directionIndex = static_cast<uint8_t>(eventIndex & 0x3U);
+  const uint8_t directionIndex = static_cast<uint8_t>(seed & 0x3U);
   const float progress = static_cast<float>(local) / static_cast<float>(activeMs);
   const RgbColor sweepColor = sweepEventColor(seed);
   const RgbColor coreColor = blendColors(sweepColor, makeColor(255, 255, 255), 180);
-  const uint8_t trailLevels[] = {255U, 176U, 104U, 48U};
+  renderCardinalSpectrumSweep(directionIndex, progress, sweepColor, coreColor);
+}
 
-  if (directionIndex == 0U || directionIndex == 2U) {
-    const float startRow = directionIndex == 0U ? -1.5f : static_cast<float>(kMatrixRows) + 0.5f;
-    const float endRow = directionIndex == 0U ? static_cast<float>(kMatrixRows) + 0.5f : -1.5f;
-    const int motion = directionIndex == 0U ? 1 : -1;
-    const float headRow = startRow + (endRow - startRow) * progress;
+void renderMatrixSpectrumStorm(uint32_t now) {
+  clearMatrixFrame();
 
-    for (uint8_t trailIndex = 0; trailIndex < sizeof(trailLevels); ++trailIndex) {
-      const int row = lroundf(headRow - static_cast<float>(motion * static_cast<int>(trailIndex)));
-      const RgbColor strokeColor = trailIndex == 0U ? coreColor : scaleColor(sweepColor, trailLevels[trailIndex]);
-      for (uint8_t column = 0; column < kMatrixColumns; ++column) {
-        addMatrixPixel(static_cast<uint8_t>(row), column, strokeColor);
-      }
-    }
+  const uint32_t cycleMs = 760U;
+  const uint32_t lineStepMs = 14U;
+  const uint32_t fullHoldMs = 72U;
+  const uint32_t fadeMs = 280U;
+  const uint32_t local = now % cycleMs;
+  const uint32_t eventIndex = now / cycleMs;
+  const uint32_t seed = hash32(eventIndex * 1637U + 557U);
+  const uint8_t directionIndex = static_cast<uint8_t>(seed & 0x3U);
+  const RgbColor strikeColor = blendColors(sweepEventColor(seed), colorWheel(static_cast<uint8_t>((seed >> 3) & 0xFFU)), 112);
+  const RgbColor coreColor = blendColors(strikeColor, makeColor(255, 255, 255), 204);
+  const bool columnSweep = directionIndex < 2U;
+  const uint8_t lineCount = columnSweep ? kMatrixColumns : kMatrixRows;
+  const uint32_t sweepMs = static_cast<uint32_t>(lineCount) * lineStepMs;
+  const uint32_t activeMs = sweepMs + fullHoldMs + fadeMs;
+  if (local >= activeMs) {
     return;
   }
 
-  const float startColumn = directionIndex == 1U ? static_cast<float>(kMatrixColumns) + 0.5f : -1.5f;
-  const float endColumn = directionIndex == 1U ? -1.5f : static_cast<float>(kMatrixColumns) + 0.5f;
-  const int motion = directionIndex == 1U ? -1 : 1;
-  const float headColumn = startColumn + (endColumn - startColumn) * progress;
+  const bool sweeping = local < sweepMs;
+  const uint8_t visibleLineCount = sweeping
+    ? min<uint8_t>(lineCount, static_cast<uint8_t>(local / lineStepMs) + 1U)
+    : lineCount;
+  const int highlightOrderedIndex = sweeping ? min<int>(lineCount - 1, static_cast<int>(local / lineStepMs)) : -1;
+  uint8_t globalScale = 255U;
+  if (local >= sweepMs + fullHoldMs) {
+    const float fadeProgress = static_cast<float>(local - sweepMs - fullHoldMs) / static_cast<float>(fadeMs);
+    const float fadeCurve = powf(max(0.0f, 1.0f - fadeProgress), 1.35f);
+    globalScale = static_cast<uint8_t>(255.0f * fadeCurve + 0.5f);
+  }
 
-  for (uint8_t trailIndex = 0; trailIndex < sizeof(trailLevels); ++trailIndex) {
-    const int column = lroundf(headColumn - static_cast<float>(motion * static_cast<int>(trailIndex)));
-    const RgbColor strokeColor = trailIndex == 0U ? coreColor : scaleColor(sweepColor, trailLevels[trailIndex]);
-    for (uint8_t row = 0; row < kMatrixRows; ++row) {
-      addMatrixPixel(row, static_cast<uint8_t>(column), strokeColor);
+  const RgbColor lineColor = scaleColor(strikeColor, globalScale);
+  const RgbColor coreLineColor = scaleColor(coreColor, globalScale);
+
+  for (uint8_t orderedIndex = 0; orderedIndex < visibleLineCount; ++orderedIndex) {
+    const bool corePulse = static_cast<int>(orderedIndex) == highlightOrderedIndex;
+
+    if (columnSweep) {
+      const uint8_t column =
+        directionIndex == 0U ? orderedIndex : static_cast<uint8_t>(kMatrixColumns - 1U - orderedIndex);
+      for (uint8_t row = 0; row < kMatrixRows; ++row) {
+        setMatrixPixel(row, column, corePulse ? coreLineColor : lineColor);
+      }
+    } else {
+      const uint8_t row =
+        directionIndex == 2U ? orderedIndex : static_cast<uint8_t>(kMatrixRows - 1U - orderedIndex);
+      for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+        setMatrixPixel(row, column, corePulse ? coreLineColor : lineColor);
+      }
     }
   }
 }
@@ -1173,6 +1330,8 @@ void renderMatrixFrame(uint32_t now) {
     renderMatrixScanner(now);
   } else if (strcmp(activeMatrixPattern->id, "spectrum-scan") == 0) {
     renderMatrixSpectrumScan(now);
+  } else if (strcmp(activeMatrixPattern->id, "spectrum-storm") == 0) {
+    renderMatrixSpectrumStorm(now);
   } else if (strcmp(activeMatrixPattern->id, "lightning") == 0) {
     renderMatrixLightning(now);
   } else if (strcmp(activeMatrixPattern->id, "chase") == 0) {

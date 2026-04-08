@@ -21,6 +21,27 @@ RgbColor matrixEffectBaseColor() {
   if (strcmp(activeMatrixPattern->id, "lightning") == 0) {
     return makeColor(0x67, 0xe8, 0xf9);
   }
+  if (strcmp(activeMatrixPattern->id, "storm-ripple") == 0) {
+    return makeColor(0x7d, 0xf9, 0xff);
+  }
+  if (strcmp(activeMatrixPattern->id, "storm-spiral") == 0) {
+    return makeColor(0xc4, 0xb5, 0xfd);
+  }
+  if (strcmp(activeMatrixPattern->id, "storm-raster") == 0) {
+    return makeColor(0x93, 0xc5, 0xfd);
+  }
+  if (strcmp(activeMatrixPattern->id, "pride-wave") == 0) {
+    return makeColor(0xff, 0x4d, 0x8d);
+  }
+  if (strcmp(activeMatrixPattern->id, "heart-throb") == 0) {
+    return makeColor(0xe1, 0x1d, 0x48);
+  }
+  if (strcmp(activeMatrixPattern->id, "heartbeat-line") == 0) {
+    return makeColor(0xfb, 0x71, 0x71);
+  }
+  if (strcmp(activeMatrixPattern->id, "beat-wave") == 0) {
+    return makeColor(0xf4, 0x72, 0xb6);
+  }
   if (strcmp(activeMatrixPattern->id, "chase") == 0) {
     return makeColor(0xf5, 0x9e, 0x0b);
   }
@@ -117,9 +138,70 @@ struct LightningPoint {
   int column;
 };
 
+struct LightningPatternSegment {
+  int startRow;
+  int startColumn;
+  int endRow;
+  int endColumn;
+};
+
 RgbColor lightningStrikeColor(uint32_t seed) {
   const uint8_t hue = static_cast<uint8_t>(((seed >> 7) & 0xFFU) + ((seed >> 19) & 0x3FU));
   return blendColors(colorWheel(hue), colorWheel(static_cast<uint8_t>(hue + 40U)), 84);
+}
+
+RgbColor stormEventColor(uint32_t seed) {
+  const RgbColor primary = blendColors(sweepEventColor(seed), lightningStrikeColor(seed ^ 0x4f1bbcdcU), 96);
+  const uint8_t accentHue = static_cast<uint8_t>(((seed >> 11) & 0xFFU) + ((seed >> 23) & 0x1FU));
+  const uint8_t accentMix = static_cast<uint8_t>(48U + ((seed >> 5) & 0x5FU));
+  return blendColors(primary, colorWheel(accentHue), accentMix);
+}
+
+size_t wrappedTraversalStep(size_t startOffset, size_t offset, size_t count, bool reverse) {
+  if (count == 0U) {
+    return 0U;
+  }
+
+  startOffset %= count;
+  offset %= count;
+  if (!reverse) {
+    return (startOffset + offset) % count;
+  }
+
+  return (startOffset + count - offset) % count;
+}
+
+RgbColor prideStripeColor(uint8_t stripeIndex) {
+  switch (stripeIndex) {
+    case 0:
+      return makeColor(0xE4, 0x03, 0x03);
+    case 1:
+      return makeColor(0xFF, 0x8C, 0x00);
+    case 2:
+      return makeColor(0xFF, 0xED, 0x00);
+    case 3:
+      return makeColor(0x00, 0x80, 0x26);
+    case 4:
+      return makeColor(0x00, 0x4D, 0xFF);
+    default:
+      return makeColor(0x75, 0x07, 0x87);
+  }
+}
+
+float pulseWindow(float progress, float center, float halfWidth) {
+  const float distance = fabsf(progress - center);
+  if (distance >= halfWidth || halfWidth <= 0.0f) {
+    return 0.0f;
+  }
+
+  return 0.5f + 0.5f * cosf((distance / halfWidth) * PI);
+}
+
+float heartbeatEnvelope(float progress) {
+  return max(
+    pulseWindow(progress, 0.18f, 0.10f),
+    0.82f * pulseWindow(progress, 0.34f, 0.08f)
+  );
 }
 
 void selectLightningEndpoints(uint32_t seed, int &startRow, int &startColumn, int &targetRow, int &targetColumn) {
@@ -322,6 +404,64 @@ void renderLightningSegment(const LightningPoint &start, const LightningPoint &e
       column += stepColumn;
     }
   }
+}
+
+void renderLightningPatternFlash(
+  uint32_t now,
+  uint32_t cycleMs,
+  uint32_t buildMs,
+  uint32_t holdMs,
+  uint32_t fadeMs,
+  uint32_t seedSalt,
+  const LightningPatternSegment *segments,
+  uint8_t segmentCount,
+  uint8_t glowScale
+) {
+  clearMatrixFrame();
+  if (segmentCount == 0U) {
+    return;
+  }
+
+  const uint32_t activeMs = buildMs + holdMs + fadeMs;
+  const uint32_t local = now % cycleMs;
+  if (local >= activeMs) {
+    return;
+  }
+
+  const uint32_t eventIndex = now / cycleMs;
+  const uint32_t seed = hash32(eventIndex * seedSalt + 887U);
+  const RgbColor strikeColor = blendColors(lightningStrikeColor(seed), colorWheel(static_cast<uint8_t>((seed >> 3) & 0xFFU)), 92);
+  const RgbColor coreColor = blendColors(strikeColor, makeColor(255, 255, 255), 196);
+
+  uint8_t visibleSegmentCount = segmentCount;
+  if (buildMs > 0U && local < buildMs) {
+    const float buildProgress = static_cast<float>(local) / static_cast<float>(buildMs);
+    visibleSegmentCount = max<uint8_t>(1U, static_cast<uint8_t>(1U + buildProgress * static_cast<float>(segmentCount - 1U)));
+  }
+
+  uint8_t intensityScale = 255U;
+  if (local >= buildMs + holdMs) {
+    const float fadeProgress = static_cast<float>(local - buildMs - holdMs) / static_cast<float>(fadeMs);
+    const float fadeCurve = powf(max(0.0f, 1.0f - fadeProgress), 1.28f);
+    intensityScale = static_cast<uint8_t>(255.0f * fadeCurve + 0.5f);
+  }
+
+  for (uint8_t segmentIndex = 0U; segmentIndex < visibleSegmentCount; ++segmentIndex) {
+    const LightningPatternSegment &segment = segments[segmentIndex];
+    const LightningPoint start = {segment.startRow, segment.startColumn};
+    const LightningPoint end = {segment.endRow, segment.endColumn};
+    const uint32_t segmentSeed = hash32(seed + segmentIndex * 263U);
+    const RgbColor segmentStrike = blendColors(strikeColor, colorWheel(static_cast<uint8_t>(segmentSeed & 0xFFU)), 54);
+    const RgbColor scaledStrike = scaleColor(segmentStrike, intensityScale);
+    const RgbColor scaledCore = blendColors(scaleColor(coreColor, intensityScale), scaledStrike, 96);
+    renderLightningSegment(start, end, scaledCore, scaledStrike, glowScale);
+  }
+
+  const LightningPatternSegment &firstSegment = segments[0];
+  const LightningPatternSegment &lastSegment = segments[visibleSegmentCount - 1U];
+  const uint8_t flashScale = local < buildMs ? 255U : static_cast<uint8_t>(min<uint16_t>(255U, intensityScale + 36U));
+  addLightningGlow(firstSegment.startRow, firstSegment.startColumn, scaleColor(coreColor, flashScale), scaleColor(strikeColor, flashScale), static_cast<uint8_t>(glowScale + 8U));
+  addLightningGlow(lastSegment.endRow, lastSegment.endColumn, scaleColor(coreColor, flashScale), scaleColor(strikeColor, flashScale), static_cast<uint8_t>(glowScale + 8U));
 }
 
 void renderLightningPath(
@@ -644,10 +784,10 @@ void renderMatrixSpectrumStorm(uint32_t now) {
   const uint32_t eventIndex = now / cycleMs;
   const uint32_t seed = hash32(eventIndex * 1637U + 557U);
   const uint8_t directionIndex = static_cast<uint8_t>(seed & 0x3U);
-  const RgbColor strikeColor = blendColors(sweepEventColor(seed), colorWheel(static_cast<uint8_t>((seed >> 3) & 0xFFU)), 112);
-  const RgbColor coreColor = blendColors(strikeColor, makeColor(255, 255, 255), 204);
   const bool columnSweep = directionIndex < 2U;
   const uint8_t lineCount = columnSweep ? kMatrixColumns : kMatrixRows;
+  const size_t startOffset = static_cast<size_t>((seed >> 9) % lineCount);
+  const bool reverse = directionIndex == 1U || directionIndex == 3U;
   const uint32_t sweepMs = static_cast<uint32_t>(lineCount) * lineStepMs;
   const uint32_t activeMs = sweepMs + fullHoldMs + fadeMs;
   if (local >= activeMs) {
@@ -666,24 +806,330 @@ void renderMatrixSpectrumStorm(uint32_t now) {
     globalScale = static_cast<uint8_t>(255.0f * fadeCurve + 0.5f);
   }
 
-  const RgbColor lineColor = scaleColor(strikeColor, globalScale);
-  const RgbColor coreLineColor = scaleColor(coreColor, globalScale);
-
   for (uint8_t orderedIndex = 0; orderedIndex < visibleLineCount; ++orderedIndex) {
     const bool corePulse = static_cast<int>(orderedIndex) == highlightOrderedIndex;
+    const size_t lineIndex = wrappedTraversalStep(startOffset, orderedIndex, lineCount, reverse);
+    const uint32_t lineSeed = hash32(seed + static_cast<uint32_t>(lineIndex) * 313U + orderedIndex * 47U);
+    const RgbColor variedStrikeColor = blendColors(stormEventColor(lineSeed), colorWheel(static_cast<uint8_t>((lineSeed >> 7) & 0xFFU)), 52);
+    const RgbColor variedCoreColor = blendColors(variedStrikeColor, makeColor(255, 255, 255), 196);
+    const RgbColor lineColor = scaleColor(variedStrikeColor, globalScale);
+    const RgbColor coreLineColor = scaleColor(variedCoreColor, globalScale);
 
     if (columnSweep) {
-      const uint8_t column =
-        directionIndex == 0U ? orderedIndex : static_cast<uint8_t>(kMatrixColumns - 1U - orderedIndex);
+      const uint8_t column = static_cast<uint8_t>(lineIndex);
       for (uint8_t row = 0; row < kMatrixRows; ++row) {
         setMatrixPixel(row, column, corePulse ? coreLineColor : lineColor);
       }
     } else {
-      const uint8_t row =
-        directionIndex == 2U ? orderedIndex : static_cast<uint8_t>(kMatrixRows - 1U - orderedIndex);
+      const uint8_t row = static_cast<uint8_t>(lineIndex);
       for (uint8_t column = 0; column < kMatrixColumns; ++column) {
         setMatrixPixel(row, column, corePulse ? coreLineColor : lineColor);
       }
+    }
+  }
+}
+
+void renderMatrixStormRipple(uint32_t now) {
+  clearMatrixFrame();
+
+  const uint32_t cycleMs = 980U;
+  const uint32_t buildMs = 170U;
+  const uint32_t holdMs = 70U;
+  const uint32_t fadeMs = 340U;
+  const uint32_t activeMs = buildMs + holdMs + fadeMs;
+  const uint32_t local = now % cycleMs;
+  if (local >= activeMs) {
+    return;
+  }
+
+  const uint32_t eventIndex = now / cycleMs;
+  const uint32_t seed = hash32(eventIndex * 1999U + 887U);
+  const RgbColor strikeColor = stormEventColor(seed);
+  const RgbColor coreColor = blendColors(strikeColor, makeColor(255, 255, 255), 208);
+  const float buildProgress = min(1.0f, static_cast<float>(local) / static_cast<float>(buildMs));
+  const float startX = (static_cast<float>((seed >> 7) % 20U) * 0.5f) - 0.25f;
+  const float startY = (static_cast<float>((seed >> 13) % 12U) * 0.5f) - 0.25f;
+  const float directionAngle = (static_cast<float>((seed >> 18) & 0xFFU) / 255.0f) * (2.0f * PI);
+  const float driftDistance = 0.9f + (static_cast<float>((seed >> 26) & 0x7U) * 0.22f);
+  const float centerX = startX + cosf(directionAngle) * driftDistance * buildProgress;
+  const float centerY = startY + sinf(directionAngle) * driftDistance * buildProgress;
+  const float maxRadius = 4.8f + static_cast<float>((seed >> 22) & 0x7U) * 0.22f;
+  const float currentRadius = maxRadius * buildProgress;
+  uint8_t intensityScale = 255U;
+  if (local >= buildMs + holdMs) {
+    const float fadeProgress = static_cast<float>(local - buildMs - holdMs) / static_cast<float>(fadeMs);
+    intensityScale = static_cast<uint8_t>(255.0f * powf(max(0.0f, 1.0f - fadeProgress), 1.28f) + 0.5f);
+  }
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float deltaX = static_cast<float>(column) - centerX;
+      const float deltaY = static_cast<float>(row) - centerY;
+      const float distance = sqrtf(deltaX * deltaX + deltaY * deltaY);
+      const float trailRadius = currentRadius + 0.42f;
+      if (distance > trailRadius) {
+        continue;
+      }
+
+      const float edgeDistance = fabsf(distance - currentRadius);
+      const bool frontEdge = edgeDistance < 0.58f && local < buildMs + holdMs;
+      const uint8_t pixelScale = frontEdge
+        ? intensityScale
+        : static_cast<uint8_t>((static_cast<uint16_t>(intensityScale) * static_cast<uint16_t>(distance < currentRadius ? 176U : 92U)) / 255U);
+      const uint32_t pixelSeed = hash32(seed + row * 53U + column * 97U);
+      const RgbColor pixelColor = blendColors(strikeColor, colorWheel(static_cast<uint8_t>(pixelSeed & 0xFFU)), static_cast<uint8_t>(36U + ((pixelSeed >> 9) & 0x3FU)));
+      addLightningGlow(
+        row,
+        column,
+        scaleColor(frontEdge ? coreColor : pixelColor, pixelScale),
+        scaleColor(pixelColor, pixelScale),
+        frontEdge ? 30U : 12U
+      );
+    }
+  }
+}
+
+void renderMatrixStormSpiral(uint32_t now) {
+  clearMatrixFrame();
+
+  const uint32_t cycleMs = 940U;
+  const uint32_t buildMs = 180U;
+  const uint32_t holdMs = 70U;
+  const uint32_t fadeMs = 320U;
+  const uint32_t activeMs = buildMs + holdMs + fadeMs;
+  const uint32_t local = now % cycleMs;
+  if (local >= activeMs) {
+    return;
+  }
+
+  const uint32_t eventIndex = now / cycleMs;
+  const uint32_t seed = hash32(eventIndex * 2137U + 887U);
+  const RgbColor strikeColor = stormEventColor(seed);
+  const RgbColor coreColor = blendColors(strikeColor, makeColor(255, 255, 255), 196);
+  const size_t startOffset = static_cast<size_t>((seed >> 9) % kMatrixLedCount);
+  const bool reverse = ((seed >> 19) & 0x1U) != 0U;
+  const uint8_t visibleSteps = min<uint8_t>(
+    static_cast<uint8_t>(kMatrixLedCount),
+    static_cast<uint8_t>(1U + (min<uint32_t>(local, buildMs) * kMatrixLedCount) / buildMs)
+  );
+  uint8_t intensityScale = 255U;
+  if (local >= buildMs + holdMs) {
+    const float fadeProgress = static_cast<float>(local - buildMs - holdMs) / static_cast<float>(fadeMs);
+    intensityScale = static_cast<uint8_t>(255.0f * powf(max(0.0f, 1.0f - fadeProgress), 1.30f) + 0.5f);
+  }
+
+  for (uint8_t step = 0; step < visibleSteps; ++step) {
+    uint8_t row = 0;
+    uint8_t column = 0;
+    const size_t spiralStep = wrappedTraversalStep(startOffset, step, kMatrixLedCount, reverse);
+    spiralStepToCoord(spiralStep, row, column);
+    const uint32_t pixelSeed = hash32(seed + static_cast<uint32_t>(spiralStep) * 181U);
+    const uint8_t tailScale = static_cast<uint8_t>(
+      (static_cast<uint16_t>(intensityScale) * static_cast<uint16_t>(116U + ((pixelSeed >> 6) & 0x7FU))) / 255U
+    );
+    const bool head = step + 3U >= visibleSteps && local < buildMs + holdMs;
+    const RgbColor pixelColor = blendColors(strikeColor, colorWheel(static_cast<uint8_t>(pixelSeed & 0xFFU)), static_cast<uint8_t>(42U + ((pixelSeed >> 13) & 0x3FU)));
+    addLightningGlow(
+      row,
+      column,
+      scaleColor(head ? coreColor : pixelColor, tailScale),
+      scaleColor(pixelColor, tailScale),
+      head ? 28U : 10U
+    );
+  }
+}
+
+void renderMatrixStormRaster(uint32_t now) {
+  clearMatrixFrame();
+
+  const uint32_t cycleMs = 920U;
+  const uint32_t buildMs = 170U;
+  const uint32_t holdMs = 60U;
+  const uint32_t fadeMs = 320U;
+  const uint32_t activeMs = buildMs + holdMs + fadeMs;
+  const uint32_t local = now % cycleMs;
+  if (local >= activeMs) {
+    return;
+  }
+
+  const uint32_t eventIndex = now / cycleMs;
+  const uint32_t seed = hash32(eventIndex * 2291U + 887U);
+  const RgbColor strikeColor = stormEventColor(seed);
+  const RgbColor coreColor = blendColors(strikeColor, makeColor(255, 255, 255), 188);
+  const size_t startOffset = static_cast<size_t>((seed >> 10) % kMatrixLedCount);
+  const bool reverse = ((seed >> 20) & 0x1U) != 0U;
+  const uint8_t visibleSteps = min<uint8_t>(
+    static_cast<uint8_t>(kMatrixLedCount),
+    static_cast<uint8_t>(1U + (min<uint32_t>(local, buildMs) * kMatrixLedCount) / buildMs)
+  );
+  uint8_t intensityScale = 255U;
+  if (local >= buildMs + holdMs) {
+    const float fadeProgress = static_cast<float>(local - buildMs - holdMs) / static_cast<float>(fadeMs);
+    intensityScale = static_cast<uint8_t>(255.0f * powf(max(0.0f, 1.0f - fadeProgress), 1.24f) + 0.5f);
+  }
+
+  for (uint8_t step = 0; step < visibleSteps; ++step) {
+    uint8_t row = 0;
+    uint8_t column = 0;
+    const size_t rasterStep = wrappedTraversalStep(startOffset, step, kMatrixLedCount, reverse);
+    rowMajorStepToCoord(rasterStep, row, column);
+    const uint32_t pixelSeed = hash32(seed + static_cast<uint32_t>(rasterStep) * 211U);
+    const uint8_t stripePulse = static_cast<uint8_t>((pixelSeed >> 7) & 0x7FU);
+    const uint8_t tailScale = static_cast<uint8_t>((static_cast<uint16_t>(intensityScale) * static_cast<uint16_t>(132U + stripePulse)) / 255U);
+    const bool head = step + kMatrixColumns >= visibleSteps && local < buildMs + holdMs;
+    const RgbColor pixelColor = blendColors(strikeColor, colorWheel(static_cast<uint8_t>(pixelSeed & 0xFFU)), static_cast<uint8_t>(38U + ((pixelSeed >> 16) & 0x3FU)));
+    addLightningGlow(
+      row,
+      column,
+      scaleColor(head ? coreColor : pixelColor, tailScale),
+      scaleColor(pixelColor, tailScale),
+      head ? 22U : 8U
+    );
+  }
+}
+
+void renderMatrixPrideWave(uint32_t now) {
+  clearMatrixFrame();
+
+  const float phase = static_cast<float>(now) / 230.0f;
+  for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+    const float columnProgress = static_cast<float>(column) / static_cast<float>(max<uint8_t>(1U, kMatrixColumns - 1U));
+    const float primaryFold = sinf(phase + column * 0.72f);
+    const float secondaryFold = sinf((phase * 1.33f) - column * 1.18f);
+    const float waveOffset = (0.08f + (0.38f * columnProgress)) * ((primaryFold * 0.66f) + (secondaryFold * 0.34f));
+    const float clothShade = 0.58f + 0.18f * (0.5f + 0.5f * primaryFold) + 0.18f * (0.5f + 0.5f * secondaryFold);
+    const float highlightStrength = max(0.0f, primaryFold) * (0.08f + 0.18f * columnProgress);
+
+    for (uint8_t row = 0; row < kMatrixRows; ++row) {
+      const float shiftedRow = static_cast<float>(row) + waveOffset;
+      const int stripeIndex = constrain(static_cast<int>(shiftedRow + 0.5f), 0, kMatrixRows - 1);
+      const float rowTexture = 0.88f + 0.12f * sinf((phase * 0.74f) + column * 0.31f + row * 0.62f);
+      const float brightness = min(1.0f, max(0.42f, clothShade * rowTexture));
+      const RgbColor stripeColor = prideStripeColor(static_cast<uint8_t>(stripeIndex));
+      const RgbColor shadedColor = scaleColor(stripeColor, static_cast<uint8_t>(brightness * 255.0f + 0.5f));
+      const uint8_t whiteMix = static_cast<uint8_t>(min(255.0f, highlightStrength * 255.0f));
+      setMatrixPixel(row, column, blendColors(shadedColor, makeColor(255, 255, 255), whiteMix));
+    }
+  }
+}
+
+void renderMatrixHeartThrob(uint32_t now) {
+  clearMatrixFrame();
+
+  const uint32_t cycleMs = 1220U;
+  const float progress = static_cast<float>(now % cycleMs) / static_cast<float>(cycleMs);
+  const float beatA = pulseWindow(progress, 0.18f, 0.10f);
+  const float beatB = 0.82f * pulseWindow(progress, 0.34f, 0.08f);
+  const float beat = max(beatA, beatB);
+  const float afterGlow = 0.36f * pulseWindow(progress, 0.24f, 0.18f) + 0.28f * pulseWindow(progress, 0.40f, 0.16f);
+  const float centerX = (kMatrixColumns - 1) * 0.5f;
+  const float centerY = (kMatrixRows - 1) * 0.5f;
+  const RgbColor baseColor = makeColor(0xb9, 0x1c, 0x1c);
+  const RgbColor accentColor = makeColor(0xfb, 0x71, 0x71);
+  const RgbColor coreColor = makeColor(255, 255, 255);
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float deltaX = static_cast<float>(column) - centerX;
+      const float deltaY = static_cast<float>(row) - centerY;
+      const float distance = sqrtf(deltaX * deltaX + deltaY * deltaY);
+      const float coreMask = max(0.0f, 1.0f - (distance / (1.20f + beat * 0.95f)));
+      const float ringRadius = 0.7f + beatA * 2.2f + beatB * 3.0f;
+      const float ringMask = max(0.0f, 1.0f - (fabsf(distance - ringRadius) / (0.80f + beat * 0.34f)));
+      const float ambient = 0.08f + afterGlow;
+      const float intensity = min(1.0f, ambient + coreMask * (0.52f + beat * 0.42f) + ringMask * (0.20f + beat * 0.34f));
+      RgbColor pixelColor = scaleColor(baseColor, static_cast<uint8_t>(intensity * 255.0f + 0.5f));
+      pixelColor = blendColors(pixelColor, accentColor, static_cast<uint8_t>(min(255.0f, ringMask * 148.0f)));
+      pixelColor = blendColors(pixelColor, coreColor, static_cast<uint8_t>(min(255.0f, coreMask * (88.0f + beat * 120.0f))));
+      setMatrixPixel(row, column, pixelColor);
+    }
+  }
+}
+
+void renderMatrixHeartbeatLine(uint32_t now) {
+  clearMatrixFrame();
+
+  static const int8_t kWaveOffsets[] = {0, 0, 0, -1, 0, -3, 2, 0, 0, 0};
+  constexpr uint8_t kWavePointCount = sizeof(kWaveOffsets) / sizeof(kWaveOffsets[0]);
+  const uint8_t baselineRow = 3U;
+  const uint32_t cycleMs = 1380U;
+  const uint32_t sweepMs = 980U;
+  const uint32_t fadeMs = 260U;
+  const uint32_t local = now % cycleMs;
+  uint8_t globalScale = 255U;
+  if (local >= sweepMs) {
+    if (local >= sweepMs + fadeMs) {
+      globalScale = 32U;
+    } else {
+      const float fadeProgress = static_cast<float>(local - sweepMs) / static_cast<float>(fadeMs);
+      globalScale = static_cast<uint8_t>(32.0f + (223.0f * powf(max(0.0f, 1.0f - fadeProgress), 1.22f)) + 0.5f);
+    }
+  }
+
+  const RgbColor baseColor = scaleColor(makeColor(0x7f, 0x1d, 0x1d), static_cast<uint8_t>(24U + (globalScale / 8U)));
+  const RgbColor traceColor = scaleColor(makeColor(0xfb, 0x71, 0x71), globalScale);
+  const RgbColor headColor = scaleColor(makeColor(255, 255, 255), globalScale);
+  for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+    setMatrixPixel(baselineRow, column, baseColor);
+  }
+
+  if (local >= sweepMs + fadeMs) {
+    return;
+  }
+
+  const size_t travelSteps = kMatrixColumns + kWavePointCount - 1U;
+  const size_t headStep = min<size_t>(travelSteps - 1U, (static_cast<size_t>(min<uint32_t>(local, sweepMs)) * travelSteps) / sweepMs);
+  bool hasPrevious = false;
+  LightningPoint previousPoint = {0, 0};
+
+  for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+    const int patternIndex = static_cast<int>(column) - static_cast<int>(headStep) + static_cast<int>(kWavePointCount - 1U);
+    if (patternIndex < 0 || patternIndex >= static_cast<int>(kWavePointCount)) {
+      continue;
+    }
+
+    const int row = constrain(static_cast<int>(baselineRow) + static_cast<int>(kWaveOffsets[patternIndex]), 0, kMatrixRows - 1);
+    const bool head = patternIndex == static_cast<int>(kWavePointCount - 1U);
+    const RgbColor pixelColor = head ? headColor : traceColor;
+    addLightningGlow(row, column, pixelColor, traceColor, head ? 26U : 12U);
+    const LightningPoint currentPoint = {row, column};
+    if (hasPrevious) {
+      renderLightningSegment(previousPoint, currentPoint, pixelColor, traceColor, head ? 22U : 8U);
+    }
+    previousPoint = currentPoint;
+    hasPrevious = true;
+  }
+}
+
+void renderMatrixBeatWave(uint32_t now) {
+  clearMatrixFrame();
+
+  const uint32_t cycleMs = 1260U;
+  const float progress = static_cast<float>(now % cycleMs) / static_cast<float>(cycleMs);
+  const float beatA = pulseWindow(progress, 0.18f, 0.10f);
+  const float beatB = 0.86f * pulseWindow(progress, 0.34f, 0.08f);
+  const float beat = max(beatA, beatB);
+  const float centerColumn = (kMatrixColumns - 1) * 0.5f;
+  const float centerRow = (kMatrixRows - 1) * 0.5f;
+  const float maxDistance = centerColumn + 0.5f;
+  const float frontA = beatA * maxDistance;
+  const float frontB = beatB * maxDistance;
+  const RgbColor baseColor = makeColor(0xbe, 0x12, 0x3c);
+  const RgbColor accentColor = makeColor(0xf9, 0xa8, 0xd4);
+  const RgbColor coreColor = makeColor(255, 255, 255);
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float columnDistance = fabsf(static_cast<float>(column) - centerColumn);
+      const float rowWeight = max(0.40f, 1.0f - (fabsf(static_cast<float>(row) - centerRow) / (centerRow + 0.8f)));
+      const float frontMaskA = max(0.0f, 1.0f - (fabsf(columnDistance - frontA) / 0.95f));
+      const float frontMaskB = max(0.0f, 1.0f - (fabsf(columnDistance - frontB) / 0.80f));
+      const float fillMask = max(0.0f, 1.0f - (columnDistance / (1.45f + beat * 3.1f)));
+      const float intensity = min(1.0f, rowWeight * (0.12f + fillMask * (0.28f + beat * 0.24f) + frontMaskA * 0.34f + frontMaskB * 0.42f));
+      RgbColor pixelColor = scaleColor(baseColor, static_cast<uint8_t>(intensity * 255.0f + 0.5f));
+      pixelColor = blendColors(pixelColor, accentColor, static_cast<uint8_t>(min(255.0f, (frontMaskA * 72.0f) + (frontMaskB * 110.0f))));
+      pixelColor = blendColors(pixelColor, coreColor, static_cast<uint8_t>(min(255.0f, fillMask * beat * 120.0f)));
+      setMatrixPixel(row, column, pixelColor);
     }
   }
 }
@@ -1334,6 +1780,20 @@ void renderMatrixFrame(uint32_t now) {
     renderMatrixSpectrumStorm(now);
   } else if (strcmp(activeMatrixPattern->id, "lightning") == 0) {
     renderMatrixLightning(now);
+  } else if (strcmp(activeMatrixPattern->id, "storm-ripple") == 0) {
+    renderMatrixStormRipple(now);
+  } else if (strcmp(activeMatrixPattern->id, "storm-spiral") == 0) {
+    renderMatrixStormSpiral(now);
+  } else if (strcmp(activeMatrixPattern->id, "storm-raster") == 0) {
+    renderMatrixStormRaster(now);
+  } else if (strcmp(activeMatrixPattern->id, "pride-wave") == 0) {
+    renderMatrixPrideWave(now);
+  } else if (strcmp(activeMatrixPattern->id, "heart-throb") == 0) {
+    renderMatrixHeartThrob(now);
+  } else if (strcmp(activeMatrixPattern->id, "heartbeat-line") == 0) {
+    renderMatrixHeartbeatLine(now);
+  } else if (strcmp(activeMatrixPattern->id, "beat-wave") == 0) {
+    renderMatrixBeatWave(now);
   } else if (strcmp(activeMatrixPattern->id, "chase") == 0) {
     renderMatrixChase(now);
   } else if (strcmp(activeMatrixPattern->id, "pulse") == 0) {

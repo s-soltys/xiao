@@ -9,7 +9,7 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - a Wi-Fi Config app for scanning nearby SSIDs, saving credentials, and ordering runtime network priority
 - a solid onboard status LED while the device is powered
 - a 6x10 WS2812B RGB matrix controller on `A0 / D0 / GPIO 0`
-- 30 selectable RGB matrix effects plus dedicated Solid Glow, Mood, and Message modes
+- 38 selectable RGB matrix effects plus dedicated Solid Glow, Mood, and Message modes
 - a BLE scanner
 - a device-status app with internal temperature and system telemetry
 - matrix effect, enabled state, brightness level, animation speed, dedicated glow color, mood, and message persistence across power cycles
@@ -507,35 +507,42 @@ The RGB Matrix app exposes these effects for the 6x10 WS2812B panel:
 
 1. `scanner`
 2. `spectrum-scan` (`Spectrum Scan`, random color and 4-way sweep directions)
-3. `spectrum-storm` (`Spectrum Storm`, super-fast 4-direction whole-line sweep, brief full-board hold, then fade-out)
+3. `spectrum-storm` (`Spectrum Storm`, super-fast whole-line sweep with random colors, random starting points, and random cardinal directions)
 4. `lightning` (`Lightning Trees`)
-5. `chase`
-6. `pulse`
-7. `checker`
-8. `sparkle`
-9. `plasma`
-10. `prism`
-11. `ripple` (`Neon Ripple`)
-12. `ripple-dual` (`Dual Ripple`)
-13. `ripple-core` (`Pulse Core`)
-14. `ripple-grid` (`Grid Ripple`)
-15. `ripple-surge` (`Neon Surge`)
-16. `meteor`
-17. `confetti` (`Confetti Burst`)
-18. `confetti-pop` (`Confetti Pop`)
-19. `confetti-fizz` (`Confetti Fizz`)
-20. `confetti-drift` (`Confetti Drift`)
-21. `confetti-shower` (`Confetti Shower`)
-22. `static`
-23. `lava`
-24. `spiral`
-25. `radar`
-26. `cross`
-27. `helix`
-28. `raster-trace`
-29. `zigzag-trace`
-30. `spiral-trace`
-31. `rain-drops`
+5. `storm-ripple` (`Storm Ripple`, drifting ripple flash with random colors, origins, and travel directions)
+6. `storm-spiral` (`Storm Spiral`, spiral flash with random colors, starting points, and clockwise/counterclockwise travel)
+7. `storm-raster` (`Storm Raster`, raster flash with random colors, starting points, and forward/reverse travel)
+8. `pride-wave` (`Pride Wave`, waving LGBT flag)
+9. `heart-throb` (`Heart Throb`, center double-beat pulse)
+10. `heartbeat-line` (`Heartbeat Line`, ECG-style heartbeat sweep)
+11. `beat-wave` (`Beat Wave`, mirrored double-beat column wave)
+12. `chase`
+13. `pulse`
+14. `checker`
+15. `sparkle`
+16. `plasma`
+17. `prism`
+18. `ripple` (`Neon Ripple`)
+19. `ripple-dual` (`Dual Ripple`)
+20. `ripple-core` (`Pulse Core`)
+21. `ripple-grid` (`Grid Ripple`)
+22. `ripple-surge` (`Neon Surge`)
+23. `meteor`
+24. `confetti` (`Confetti Burst`)
+25. `confetti-pop` (`Confetti Pop`)
+26. `confetti-fizz` (`Confetti Fizz`)
+27. `confetti-drift` (`Confetti Drift`)
+28. `confetti-shower` (`Confetti Shower`)
+29. `static`
+30. `lava`
+31. `spiral`
+32. `radar`
+33. `cross`
+34. `helix`
+35. `raster-trace`
+36. `zigzag-trace`
+37. `spiral-trace`
+38. `rain-drops`
 
 Dedicated matrix-only modes outside that effect picker:
 

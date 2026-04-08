@@ -37,10 +37,7 @@ const MatrixPatternDefinition kMatrixPatterns[] = {
 };
 
 const MatrixMappingDefinition kMatrixMappings[] = {
-  {"cols-tl", "Columns • Top Left", true, false, false},
-  {"cols-tr", "Columns • Top Right", true, true, false},
-  {"cols-bl", "Columns • Bottom Left", true, false, true},
-  {"cols-br", "Columns • Bottom Right", true, true, true},
+  {"cols-linear-tr", "Columns Linear • Top Right", true, false, true, false},
 };
 
 const MoodDefinition kMoods[] = {

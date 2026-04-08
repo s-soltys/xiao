@@ -336,7 +336,7 @@ Returns RGB matrix state including:
 - saved mood id
 - saved scrolling message text
 - available RGB Matrix app effects
-- available wiring/mapping profiles
+- active fixed matrix mapping profile
 - a 6x10 preview frame snapshot
 
 Example:
@@ -356,12 +356,12 @@ Example:
   "brightness": 48,
   "animationSpeed": 100,
   "color": "#22c55e",
-  "mappingId": "cols-bl",
-  "mappingLabel": "Columns • Bottom Left",
+  "mappingId": "cols-linear-tr",
+  "mappingLabel": "Columns Linear • Top Right",
   "moodId": "happy",
   "messageText": "HELLO",
   "mappings": [
-    { "id": "cols-bl", "label": "Columns • Bottom Left" }
+    { "id": "cols-linear-tr", "label": "Columns Linear • Top Right" }
   ],
   "patterns": [
     { "id": "scanner", "label": "Scanner" }
@@ -377,7 +377,7 @@ Request body accepts one or more of:
 ```json
 {
   "patternId": "scanner",
-  "mappingId": "cols-bl",
+  "mappingId": "cols-linear-tr",
   "brightness": 64,
   "animationSpeed": 125,
   "enabled": true
@@ -506,7 +506,7 @@ In addition, the firmware supports a custom `morse-text` mode that is activated 
 The RGB Matrix app exposes these effects for the 6x10 WS2812B panel:
 
 1. `scanner`
-2. `spectrum-scan` (`Spectrum Scan`)
+2. `spectrum-scan` (`Spectrum Scan`, cycles top-down, right-left, bottom-top, left-right)
 3. `lightning` (`Lightning Trees`)
 4. `chase`
 5. `pulse`
@@ -605,7 +605,7 @@ The runtime Wi-Fi network list is persisted in:
 
 ## Lessons From This Session
 
-- This hardware setup currently works with column-based mapping profiles only. The default mapping is `cols-bl`.
+- The firmware now uses a single fixed matrix mapping: `cols-linear-tr` (`Columns Linear • Top Right`).
 - Matrix rendering should always happen in logical `row` and `column` space. Direct writes by raw LED index can bypass the selected mapping and make some effects look correct while others are skewed.
 - If a matrix change affects layout, validate multiple modes, not just one. Mood icons, message glyphs, previews, and animated effects should all respect the same mapping.
 - On a 6x10 panel, mood icons work better as sparse single-color expressions than as full outlined or multicolor emoji faces.
@@ -635,7 +635,7 @@ If the RGB matrix does not light:
 
 If matrix shapes look scrambled or some modes look correct while others do not:
 
-- confirm the selected mapping in the `RGB Matrix` app; `cols-bl` is the current default
+- confirm the fixed mapping reported in the `RGB Matrix` app is `cols-linear-tr`
 - test with structured effects such as `scanner`, `raster-trace`, `zigzag-trace`, and `spiral-trace`
 - treat any mode that only looks correct under one effect as a likely mapping/rendering bug rather than just bad artwork
 

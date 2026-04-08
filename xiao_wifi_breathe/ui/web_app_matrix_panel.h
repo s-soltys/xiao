@@ -1,7 +1,7 @@
 #pragma once
 
 const char kWebAppMatrixPanel[] PROGMEM = R"HTML(
-      function MatrixAppPanel({ matrixState, matrixBusy, matrixMapping, onMatrixMappingChange, onApplyMatrixControls, onSelectPattern }) {
+      function MatrixAppPanel({ matrixState, matrixBusy, onSelectPattern }) {
         const matrixOwnershipNote =
           matrixState?.selectedPatternId === 'mood'
             ? 'Controlled by Mood App'
@@ -29,12 +29,12 @@ const char kWebAppMatrixPanel[] PROGMEM = R"HTML(
                 </div>
               </div>
 
-              <form className="grid gap-4 rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm" onSubmit={onApplyMatrixControls}>
+              <div className="grid gap-4 rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm">
                 <div>
                   <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Panel Controls</div>
-                  <h2 className="mt-2 text-2xl font-bold text-slate-900">Effect routing and mapping</h2>
+                  <h2 className="mt-2 text-2xl font-bold text-slate-900">Effect routing</h2>
                   <p className="mt-2 text-sm text-slate-600">
-                    Pick animated effects here, then change the matrix wiring map if text or faces look scrambled on the real panel.
+                    Pick animated effects here. The panel mapping is fixed in firmware so every app and animation uses the same physical layout.
                   </p>
                 </div>
 
@@ -43,30 +43,11 @@ const char kWebAppMatrixPanel[] PROGMEM = R"HTML(
                   <div className="mt-2 text-slate-900">Power is {matrixState?.enabled ? 'enabled' : 'disabled'}, brightness is {matrixState?.brightness ?? 0}/255, and speed is {matrixState?.animationSpeed ?? 100}%. Solid Glow color is now separate and does not tint these RGB effects.</div>
                 </div>
 
-                <div className="grid gap-2">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.24em] text-slate-500">Pixel Mapping</label>
-                  <select
-                    value={matrixMapping}
-                    onChange={(event) => onMatrixMappingChange(event.target.value)}
-                    disabled={matrixBusy || !matrixState?.available}
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200 disabled:opacity-60"
-                  >
-                    {(matrixState?.mappings || []).map((mapping) => (
-                      <option key={mapping.id} value={mapping.id}>
-                        {mapping.label}
-                      </option>
-                    ))}
-                  </select>
+                <div className="rounded-3xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600">
+                  Fixed pixel mapping:
+                  <div className="mt-2 text-slate-900">{matrixState?.mappingLabel || 'Columns Linear • Top Right'}</div>
                 </div>
-
-                <button
-                  type="submit"
-                  disabled={matrixBusy || !matrixState?.available}
-                  className="inline-flex min-h-[52px] items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {matrixBusy ? 'Applying Mapping...' : 'Apply Mapping'}
-                </button>
-              </form>
+              </div>
             </div>
 
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -101,7 +82,7 @@ const char kWebAppMatrixPanel[] PROGMEM = R"HTML(
                 <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-teal-700">Wiring Note</div>
                 <h2 className="mt-2 text-2xl font-bold text-slate-900">Panel input</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
-                  This firmware assumes the matrix data input is connected to <span className="font-medium text-slate-900">A0 / D0 / GPIO 0</span>. If the panel looks mirrored or scrambled, use the mapping selector above before changing firmware again.
+                  This firmware assumes the matrix data input is connected to <span className="font-medium text-slate-900">A0 / D0 / GPIO 0</span>. Matrix routing is locked to <span className="font-medium text-slate-900">{matrixState?.mappingLabel || 'Columns Linear • Top Right'}</span>.
                 </p>
               </div>
             </section>

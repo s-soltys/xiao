@@ -411,67 +411,6 @@ void renderMatrixLightning(uint32_t now) {
   addLightningGlow(trunk[trunkVisible - 1U].row, trunk[trunkVisible - 1U].column, scaleColor(coreColor, flashScale), scaleColor(strikeColor, flashScale), 28U);
 }
 
-void renderDiagonalSpectrumSweep(uint8_t directionIndex, float progress, const RgbColor &sweepColor, const RgbColor &coreColor) {
-  const float maxColumn = static_cast<float>(kMatrixColumns - 1U);
-  const float maxRow = static_cast<float>(kMatrixRows - 1U);
-  const float diagonalOverscan = 2.0f;
-  float entryX = 0.0f;
-  float entryY = 0.0f;
-  float exitX = maxColumn;
-  float exitY = maxRow;
-
-  if (directionIndex == 5U) {
-    entryX = maxColumn;
-    entryY = maxRow;
-    exitX = 0.0f;
-    exitY = 0.0f;
-  } else if (directionIndex == 6U) {
-    entryX = maxColumn;
-    entryY = 0.0f;
-    exitX = 0.0f;
-    exitY = maxRow;
-  } else if (directionIndex == 7U) {
-    entryX = 0.0f;
-    entryY = maxRow;
-    exitX = maxColumn;
-    exitY = 0.0f;
-  }
-
-  const float deltaX = exitX - entryX;
-  const float deltaY = exitY - entryY;
-  const float motionLength = sqrtf(deltaX * deltaX + deltaY * deltaY);
-  const float motionX = deltaX / motionLength;
-  const float motionY = deltaY / motionLength;
-  const float startX = entryX - motionX * diagonalOverscan;
-  const float startY = entryY - motionY * diagonalOverscan;
-  const float endX = exitX + motionX * diagonalOverscan;
-  const float endY = exitY + motionY * diagonalOverscan;
-  const float headX = startX + (endX - startX) * progress;
-  const float headY = startY + (endY - startY) * progress;
-  const float perpendicularX = -motionY;
-  const float perpendicularY = motionX;
-  const uint8_t trailLevels[] = {255U, 208U, 164U, 124U, 88U, 58U, 34U};
-
-  for (uint8_t trailIndex = 0; trailIndex < sizeof(trailLevels); ++trailIndex) {
-    const float distance = static_cast<float>(trailIndex) * 1.18f;
-    const float x = headX - motionX * distance;
-    const float y = headY - motionY * distance;
-    const RgbColor strokeColor = trailIndex == 0U ? coreColor : scaleColor(sweepColor, trailLevels[trailIndex]);
-    addMatrixPixel(static_cast<uint8_t>(lroundf(y)), static_cast<uint8_t>(lroundf(x)), strokeColor);
-
-    if (trailIndex > 4U) {
-      continue;
-    }
-
-    addMatrixPixel(
-      static_cast<uint8_t>(lroundf(y + perpendicularY * 0.72f)), static_cast<uint8_t>(lroundf(x + perpendicularX * 0.72f)), scaleColor(strokeColor, 84)
-    );
-    addMatrixPixel(
-      static_cast<uint8_t>(lroundf(y - perpendicularY * 0.72f)), static_cast<uint8_t>(lroundf(x - perpendicularX * 0.72f)), scaleColor(strokeColor, 84)
-    );
-  }
-}
-
 void renderMatrixSolid() {
   fillMatrixFrame(matrixSolidGlowColor());
 }
@@ -556,44 +495,38 @@ void renderMatrixSpectrumScan(uint32_t now) {
   }
 
   const uint32_t seed = hash32(eventIndex * 1181U + 97U);
-  const uint8_t directionIndex = static_cast<uint8_t>(seed & 0x7U);
+  const uint8_t directionIndex = static_cast<uint8_t>(eventIndex & 0x3U);
   const float progress = static_cast<float>(local) / static_cast<float>(activeMs);
   const RgbColor sweepColor = sweepEventColor(seed);
   const RgbColor coreColor = blendColors(sweepColor, makeColor(255, 255, 255), 180);
-
-  if (directionIndex >= 4U) {
-    renderDiagonalSpectrumSweep(directionIndex, progress, sweepColor, coreColor);
-    return;
-  }
-
   const uint8_t trailLevels[] = {255U, 176U, 104U, 48U};
 
-  if (directionIndex < 2U) {
-    const float startColumn = directionIndex == 0U ? -1.5f : static_cast<float>(kMatrixColumns) + 0.5f;
-    const float endColumn = directionIndex == 0U ? static_cast<float>(kMatrixColumns) + 0.5f : -1.5f;
+  if (directionIndex == 0U || directionIndex == 2U) {
+    const float startRow = directionIndex == 0U ? -1.5f : static_cast<float>(kMatrixRows) + 0.5f;
+    const float endRow = directionIndex == 0U ? static_cast<float>(kMatrixRows) + 0.5f : -1.5f;
     const int motion = directionIndex == 0U ? 1 : -1;
-    const float headColumn = startColumn + (endColumn - startColumn) * progress;
+    const float headRow = startRow + (endRow - startRow) * progress;
 
     for (uint8_t trailIndex = 0; trailIndex < sizeof(trailLevels); ++trailIndex) {
-      const int column = lroundf(headColumn - static_cast<float>(motion * static_cast<int>(trailIndex)));
+      const int row = lroundf(headRow - static_cast<float>(motion * static_cast<int>(trailIndex)));
       const RgbColor strokeColor = trailIndex == 0U ? coreColor : scaleColor(sweepColor, trailLevels[trailIndex]);
-      for (uint8_t row = 0; row < kMatrixRows; ++row) {
-        addMatrixPixel(row, static_cast<uint8_t>(column), strokeColor);
+      for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+        addMatrixPixel(static_cast<uint8_t>(row), column, strokeColor);
       }
     }
     return;
   }
 
-  const float startRow = directionIndex == 2U ? -1.5f : static_cast<float>(kMatrixRows) + 0.5f;
-  const float endRow = directionIndex == 2U ? static_cast<float>(kMatrixRows) + 0.5f : -1.5f;
-  const int motion = directionIndex == 2U ? 1 : -1;
-  const float headRow = startRow + (endRow - startRow) * progress;
+  const float startColumn = directionIndex == 1U ? static_cast<float>(kMatrixColumns) + 0.5f : -1.5f;
+  const float endColumn = directionIndex == 1U ? -1.5f : static_cast<float>(kMatrixColumns) + 0.5f;
+  const int motion = directionIndex == 1U ? -1 : 1;
+  const float headColumn = startColumn + (endColumn - startColumn) * progress;
 
   for (uint8_t trailIndex = 0; trailIndex < sizeof(trailLevels); ++trailIndex) {
-    const int row = lroundf(headRow - static_cast<float>(motion * static_cast<int>(trailIndex)));
+    const int column = lroundf(headColumn - static_cast<float>(motion * static_cast<int>(trailIndex)));
     const RgbColor strokeColor = trailIndex == 0U ? coreColor : scaleColor(sweepColor, trailLevels[trailIndex]);
-    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
-      addMatrixPixel(static_cast<uint8_t>(row), column, strokeColor);
+    for (uint8_t row = 0; row < kMatrixRows; ++row) {
+      addMatrixPixel(row, static_cast<uint8_t>(column), strokeColor);
     }
   }
 }

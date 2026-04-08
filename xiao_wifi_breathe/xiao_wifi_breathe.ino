@@ -68,7 +68,7 @@ constexpr char kMatrixSolidPatternId[] = "solid";
 constexpr char kMatrixMoodPatternId[] = "mood";
 constexpr char kMatrixMessagePatternId[] = "message";
 constexpr char kDefaultMatrixPatternId[] = "scanner";
-constexpr char kDefaultMatrixMappingId[] = "cols-bl";
+constexpr char kDefaultMatrixMappingId[] = "cols-linear-tr";
 constexpr char kDefaultMatrixMoodId[] = "happy";
 constexpr char kDefaultMatrixMessage[] = "HELLO";
 constexpr int kJsonFieldMissing = -1000;
@@ -144,6 +144,7 @@ struct MatrixMappingDefinition {
   const char *id;
   const char *label;
   bool columnMajor;
+  bool serpentine;
   bool flipX;
   bool flipY;
 };
@@ -176,7 +177,7 @@ WifiScanResultEntry wifiScanResults[kMaxWifiScanResults];
 
 const PatternDefinition *activePattern = &kPatterns[0];
 const MatrixPatternDefinition *activeMatrixPattern = &kMatrixPatterns[1];
-const MatrixMappingDefinition *activeMatrixMapping = &kMatrixMappings[2];
+const MatrixMappingDefinition *activeMatrixMapping = &kMatrixMappings[0];
 String morseText;
 String matrixColorHex = String(kMatrixDefaultColorHex);
 String matrixMoodId = String(kDefaultMatrixMoodId);

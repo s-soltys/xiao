@@ -29,8 +29,6 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
         const [glowColor, setGlowColor] = useState('#22c55e');
         const [matrixBrightnessSlider, setMatrixBrightnessSlider] = useState(() => sliderValueFromMatrixBrightness(48));
         const [matrixAnimationSpeedSlider, setMatrixAnimationSpeedSlider] = useState('100');
-        const [matrixMapping, setMatrixMapping] = useState('cols-bl');
-        const [matrixMappingReady, setMatrixMappingReady] = useState(false);
         const [matrixOutputInputsReady, setMatrixOutputInputsReady] = useState(false);
         const matrixRequestSeqRef = useRef(0);
         const lastDashboardAppRef = useRef('matrix');
@@ -42,10 +40,6 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
         function syncMatrixInputsFromPayload(payload, options = {}) {
           if (options.includeColor !== false) {
             setGlowColor(payload.color || '#22c55e');
-          }
-          if (options.includeMapping !== false) {
-            setMatrixMapping(payload.mappingId || 'cols-bl');
-            setMatrixMappingReady(true);
           }
           if (options.includeOutput !== false) {
             setMatrixBrightnessSlider(sliderValueFromMatrixBrightness(payload.brightness ?? 48));
@@ -76,7 +70,7 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
         async function fetchMatrixState(syncInputs = false) {
           const payload = await fetchJson('/api/matrix', { cache: 'no-store' });
           setMatrixState(payload);
-          if (syncInputs || !matrixMappingReady || !matrixOutputInputsReady) {
+          if (syncInputs || !matrixOutputInputsReady) {
             syncMatrixInputsFromPayload(payload);
           }
           return payload;
@@ -244,7 +238,6 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
             setMatrixState(payload);
             syncMatrixInputsFromPayload(payload, {
               includeColor: options.includeColor,
-              includeMapping: options.includeMapping,
               includeOutput: options.includeOutput,
             });
 
@@ -297,7 +290,6 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
               setBusy: false,
               trackOutputSync: true,
               includeColor: false,
-              includeMapping: false,
               refreshDependentApps: false,
               errorMessage: 'Unable to update the shared matrix controls.',
             }).catch(() => {});
@@ -357,19 +349,6 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
           } finally {
             setMessageBusy(false);
           }
-        }
-
-        async function applyMatrixControls(event) {
-          event.preventDefault();
-          await updateMatrixSettings(
-            {
-              mappingId: matrixMapping,
-            },
-            {
-              includeColor: false,
-              includeOutput: false,
-            }
-          );
         }
 
         async function applyGlow(event) {
@@ -553,9 +532,6 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
               <MatrixAppPanel
                 matrixState={matrixState}
                 matrixBusy={matrixBusy}
-                matrixMapping={matrixMapping}
-                onMatrixMappingChange={setMatrixMapping}
-                onApplyMatrixControls={applyMatrixControls}
                 onSelectPattern={(patternId) =>
                   updateMatrixSettings(
                     { patternId },
@@ -692,7 +668,6 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
                                   { enabled: !matrixOutputEnabled },
                                   {
                                     includeColor: false,
-                                    includeMapping: false,
                                     errorMessage: 'Unable to toggle the matrix output.',
                                   }
                                 )

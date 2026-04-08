@@ -10,7 +10,7 @@ size_t matrixPixelIndex(uint8_t row, uint8_t column) {
 
   if (!activeMatrixMapping->columnMajor) {
     const size_t baseIndex = static_cast<size_t>(mappedRow) * kMatrixColumns;
-    if ((mappedRow & 1U) == 0) {
+    if (!activeMatrixMapping->serpentine || (mappedRow & 1U) == 0) {
       return baseIndex + mappedColumn;
     }
 
@@ -18,7 +18,7 @@ size_t matrixPixelIndex(uint8_t row, uint8_t column) {
   }
 
   const size_t baseIndex = static_cast<size_t>(mappedColumn) * kMatrixRows;
-  if ((mappedColumn & 1U) == 0) {
+  if (!activeMatrixMapping->serpentine || (mappedColumn & 1U) == 0) {
     return baseIndex + mappedRow;
   }
 
@@ -485,7 +485,8 @@ void loadSavedMatrixState() {
     updateMatrixAnimationSpeed(kMatrixDefaultAnimationSpeed, false);
   }
 
-  if (!updateMatrixMapping(preferences.getString(kMatrixMappingPreferenceKey, kDefaultMatrixMappingId), false)) {
+  const String storedMappingId = preferences.getString(kMatrixMappingPreferenceKey, kDefaultMatrixMappingId);
+  if (!updateMatrixMapping(storedMappingId, false)) {
     updateMatrixMapping(kDefaultMatrixMappingId, false);
   }
 

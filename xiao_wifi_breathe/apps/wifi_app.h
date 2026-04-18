@@ -30,7 +30,7 @@ String buildWifiJson() {
   json += jsonEscape(currentIpString());
   json += F("\",\"activeSource\":\"");
   json += currentWifiSource();
-  json += F("\",\"lastError\":\"");
+  json += F(",\"lastError\":\"");
   json += jsonEscape(wifiLastError);
   json += F("\",\"fallbackConfigured\":");
   json += hasFallbackWifiCredentials() ? F("true") : F("false");

@@ -6,15 +6,15 @@ This project turns a Seeed Studio XIAO ESP32-C6 into a Wi-Fi connected LED contr
 - a React frontend loaded from CDN
 - Tailwind styling loaded from CDN
 - a multi-app layout with RGB Matrix, Solid Glow, Mood, Message, Bluetooth, and Device Info sections
-- a Wi-Fi Config app for scanning nearby SSIDs, saving credentials, and ordering runtime network priority
+- a Wi-Fi Access Point app for reviewing the hosted SSID, IP address, security mode, and client count
 - a solid onboard status LED while the device is powered
 - a 6x10 WS2812B RGB matrix controller on `A0 / D0 / GPIO 0`
-- 42 selectable RGB matrix effects plus dedicated Solid Glow, Mood, and Message modes
+- 84 selectable RGB matrix effects plus dedicated Solid Glow, Mood, and Message modes
 - a BLE scanner
 - a device-status app with internal temperature and system telemetry
 - matrix effect, enabled state, brightness level, animation speed, dedicated glow color, mood, and message persistence across power cycles
-- automatic Wi-Fi station startup on boot using saved networks first, then `wifi_config.h` fallback
-- local discovery at `http://xiao.local/` after Wi-Fi connects
+- hosted Wi-Fi access point startup on boot using credentials from `wifi_config.h`
+- direct access at `http://192.168.4.1/` once the access point starts
 
 ## What It Does
 
@@ -24,11 +24,9 @@ On boot, the firmware:
 - initializes the BLE scanner
 - turns the onboard LED on as a power indicator
 - loads the saved RGB matrix effect, enabled state, brightness, animation speed, dedicated glow color, mood, and message
-- loads saved runtime Wi-Fi networks and their priority order
 - initializes the WS2812B matrix driver on `A0 / D0 / GPIO 0`
-- starts Wi-Fi in station mode using saved networks first and `wifi_config.h` as fallback
-- starts an HTTP server on port `80` after Wi-Fi connects
-- starts mDNS and advertises the device as `xiao.local`
+- starts Wi-Fi in access-point mode using `wifi_config.h`
+- starts an HTTP server on port `80` once the hosted network is up
 - keeps the RGB matrix running in a non-blocking loop while the onboard LED stays on
 
 The mood app lets you switch between single-color matrix mood icons instantly.
@@ -50,29 +48,25 @@ The matrix app lets you switch RGB panel effects instantly and correct the physi
 
 ## Wi-Fi Configuration
 
-The firmware supports two Wi-Fi sources:
-
-- runtime-saved networks from the `Wi-Fi Config` app, retried in saved priority order
-- compile-time fallback credentials from [wifi_config.h](xiao_wifi_breathe/wifi_config.h), which is ignored by git
+The firmware now hosts its own Wi-Fi access point instead of joining another network.
 
 1. Copy [wifi_config.example.h](xiao_wifi_breathe/wifi_config.example.h) to `xiao_wifi_breathe/wifi_config.h` if needed.
-2. Set your Wi-Fi credentials:
+2. Set the hosted network credentials:
 
 ```cpp
-constexpr char kWifiSsid[] = "your-ssid";
-constexpr char kWifiPassword[] = "your-password";
+constexpr char kWifiSsid[] = "xiao-console";
+constexpr char kWifiPassword[] = "";
 ```
 
 3. Rebuild and upload the firmware.
-4. Once the device is reachable, open the `Wi-Fi Config` app to scan, save, reorder, or forget runtime networks without reflashing.
+4. Join the hosted SSID from your phone or laptop, then open `http://192.168.4.1/`.
 
-If `wifi_config.h` is empty or invalid:
+Notes:
 
-- the LED patterns still work
-- the last saved pattern still loads
-- no fallback access point is started
-- the device will still try any runtime-saved networks first
-- the device will not expose the web app until it joins Wi-Fi
+- if `kWifiSsid` is empty, the firmware falls back to `xiao-console`
+- if `kWifiPassword` is empty, the hosted network is open
+- if `kWifiPassword` is between 1 and 7 characters, the firmware logs a warning and starts an open network instead
+- the browser may still need cached CDN assets or a separate internet path because the UI shell still references React, ReactDOM, Tailwind, and Babel from CDNs
 
 ## Build And Upload
 
@@ -106,9 +100,9 @@ Serial monitor:
 
 ## Web App
 
-After the device joins Wi-Fi, open:
+After the device starts its hosted Wi-Fi, open:
 
-- `http://xiao.local/`
+- `http://192.168.4.1/`
 
 The browser loads:
 
@@ -117,7 +111,7 @@ The browser loads:
 - Tailwind from CDN
 - Babel standalone from CDN
 
-The device serves the HTML shell itself, but the browser still needs internet access for those CDN assets.
+The device serves the HTML shell itself, but the browser still needs internet access, cached assets, or a second uplink for those CDN assets.
 
 The frontend is now split into an app shell and per-app panels, and the shell discovers its visible tabs from `GET /api/apps` instead of hardcoding the app list in one monolithic component.
 
@@ -130,10 +124,10 @@ The web UI is split into seven visible apps:
 - `Mood App`: shows one saved mood icon on the RGB matrix
 - `Message App`: scrolls a saved text message right-to-left on the RGB matrix
 - `Bluetooth Scanner`: scans nearby BLE advertisers and shows scan results
-- `Wi-Fi Config`: shows connection status, scans nearby SSIDs, stores credentials, and reorders Wi-Fi priority
+- `Wi-Fi Access Point`: shows the hosted SSID, IP address, security mode, and current client count
 - `Device Info`: shows internal chip temperature and device telemetry
 
-Shared matrix power, brightness, and animation speed live in the header and apply to RGB Matrix, Solid Glow, Mood, and Message together. The header network card opens the `Wi-Fi Config` app directly.
+Shared matrix power, brightness, and animation speed live in the header and apply to RGB Matrix, Solid Glow, Mood, and Message together. The header network card opens the `Wi-Fi Access Point` app directly.
 
 The firmware also keeps the legacy onboard LED state routes (`/api/state`, `/api/pattern`, `/api/morse`) as system endpoints even though they are not shown as a visible tab in the current UI.
 
@@ -171,10 +165,11 @@ Returns current device state:
 
 ```json
 {
-  "hostname": "xiao.local",
+  "hostname": "xiao-ap",
+  "address": "192.168.4.1",
   "connected": true,
-  "ssid": "your-ssid",
-  "ip": "192.168.1.10",
+  "ssid": "xiao-console",
+  "ip": "192.168.4.1",
   "selectedPatternId": "breathing",
   "selectedPatternLabel": "Breathing",
   "morseText": "HELLO XIAO",
@@ -184,7 +179,7 @@ Returns current device state:
 }
 ```
 
-`ssid` reports the currently connected live network. It is empty when the station is disconnected.
+`ssid` reports the hosted access-point SSID. `address` and `ip` both point to the hosted device address.
 
 ### `POST /api/pattern`
 
@@ -234,79 +229,52 @@ Starts a BLE scan and returns the updated scanner state JSON.
 
 Returns Wi-Fi app state including:
 
-- current Wi-Fi status, active source, target SSID, and last error
-- current hostname and IP
-- saved networks in retry priority order
-- latest scan timestamps and scan results
+- hosted Wi-Fi mode, status, source, and last error
+- hosted SSID, address, and IP
+- hosted security mode and whether a password is configured
+- current and maximum client count
 
 Example:
 
 ```json
 {
   "available": true,
-  "status": "connected",
+  "mode": "ap",
+  "status": "hosting",
   "connected": true,
   "connecting": false,
   "scanning": false,
-  "hostname": "xiao.local",
-  "ssid": "office-wifi",
-  "targetSsid": "office-wifi",
-  "ip": "192.168.1.10",
-  "activeSource": "saved",
+  "hostname": "xiao-ap",
+  "address": "192.168.4.1",
+  "ssid": "xiao-console",
+  "targetSsid": "xiao-console",
+  "ip": "192.168.4.1",
+  "activeSource": "softap",
+  "security": "open",
+  "passwordConfigured": false,
+  "clientCount": 1,
+  "maxClients": 4,
   "lastError": "",
-  "fallbackConfigured": true,
-  "savedNetworks": [
-    { "ssid": "office-wifi", "priority": 1, "connected": true }
-  ],
-  "scanResults": [
-    { "ssid": "office-wifi", "rssi": -48, "encryptionType": "wpa2-psk", "known": true }
-  ]
+  "savedNetworks": [],
+  "scanResults": []
 }
 ```
 
 ### `POST /api/wifi/scan`
 
-Starts an async Wi-Fi scan and returns the updated Wi-Fi state JSON.
+Returns `405` because station scans are disabled in hosted access-point mode.
 
 ### `POST /api/wifi/connect`
 
-Request body:
-
-```json
-{ "ssid": "office-wifi", "password": "super-secret" }
-```
-
-Effect:
-
-- saves or updates the network at priority 1
-- starts an immediate connection attempt
-- returns the updated Wi-Fi state JSON
+Returns `405` because the hosted SSID and password are configured in `wifi_config.h`.
 
 ### `POST /api/wifi/reorder`
 
-Request body:
-
-```json
-{ "ssids": ["office-wifi", "lab-backup"] }
-```
-
-Effect:
-
-- rewrites the saved Wi-Fi priority order
-- returns the updated Wi-Fi state JSON
+Returns `405` because saved-network priority does not exist in access-point mode.
 
 ### `POST /api/wifi/forget`
 
-Request body:
-
-```json
-{ "ssid": "lab-backup" }
-```
-
-Effect:
-
-- removes the saved network from runtime storage
-- returns the updated Wi-Fi state JSON
+Returns `405` because there are no runtime-saved station credentials in access-point mode.
 
 ### `GET /api/device`
 
@@ -318,7 +286,7 @@ Returns device telemetry including:
 - internal chip temperature
 - heap and flash stats
 - sketch size and free sketch space
-- eFuse MAC, IP, Wi-Fi RSSI
+- eFuse MAC, hosted IP, Wi-Fi mode, security, and client count
 - BLE stack status
 
 ### `GET /api/matrix`
@@ -547,6 +515,20 @@ The RGB Matrix app exposes these effects for the 6x10 WS2812B panel:
 40. `raster-trace`
 41. `zigzag-trace`
 42. `spiral-trace`
+43. `aurora-borealis` (`Aurora Borealis`, brighter shimmering polar wash)
+44. `crosscurrent` (`Crosscurrent`, crossing water flow)
+45. `singularity-burst` (`Singularity Burst`, pulsing center detonation ring)
+46. `ashfall` (`Ashfall`, drifting cooling embers)
+47. `prism-fan` (`Prism Fan`, rotating refracted spokes)
+48. `swarm-burst` (`Swarm Burst`, outward swarm detonations)
+49. `eclipse-ring` (`Eclipse Ring`, shadowed disk with chromatic rim)
+50. `data-rain` (`Data Rain`, vertical digital falls)
+51. `dune-vault` (`Dune Vault`, arched desert ceiling)
+52. `fracture-field` (`Fracture Field`, multiple glowing fractures)
+53. `sonar-net` (`Sonar Net`, crossing scan lattice)
+54. `hyperspace` (`Hyperspace`, faster tunnel warp)
+55. `strobe-tunnel` (`Strobe Tunnel`, pulsing center tunnel)
+56. `caustic-flow` (`Caustic Flow`, watery shimmer caustics)
 
 Dedicated matrix-only modes outside that effect picker:
 
@@ -591,13 +573,6 @@ The RGB matrix settings are persisted in:
 - key: `matrixMood`
 - key: `matrixMessage`
 
-The runtime Wi-Fi network list is persisted in:
-
-- namespace: `xiao-app`
-- key: `wifiCount`
-- key prefix: `wifiSsid`
-- key prefix: `wifiPass`
-
 ## Implementation Notes
 
 - The onboard LED is driven as active-low.
@@ -605,10 +580,10 @@ The runtime Wi-Fi network list is persisted in:
 - The RGB matrix uses `Adafruit NeoPixel` on a logical 6x10 grid with selectable column-based wiring maps.
 - Shared matrix power, brightness, and animation speed apply to every matrix-facing app.
 - The web app is embedded in flash via PROGMEM; there is no SPIFFS or LittleFS dependency.
-- Wi-Fi is STA-only.
-- Saved Wi-Fi networks are retried in priority order before `wifi_config.h` fallback is attempted.
-- mDNS is started only after Wi-Fi connects.
-- The hostname shown and advertised is `xiao.local`.
+- Wi-Fi now runs in AP-only mode.
+- The hosted SSID comes from `wifi_config.h`, with `xiao-console` as the fallback default if `kWifiSsid` is empty.
+- The hosted password must be empty or at least 8 characters; otherwise the firmware logs a warning and starts an open network.
+- The browser-facing address is the SoftAP IP, typically `192.168.4.1`.
 - Morse input supports letters, digits, spaces, and `. , ? ! - / @ ( )`.
 - Message input supports `A-Z`, `0-9`, spaces, and `. , ! ? -`.
 - The matrix firmware assumes the WS2812B data input is wired to `A0 / D0 / GPIO 0`.
@@ -627,16 +602,16 @@ The runtime Wi-Fi network list is persisted in:
 
 ## Troubleshooting
 
-If `http://xiao.local/` does not open:
+If `http://192.168.4.1/` does not open:
 
-- confirm either a saved Wi-Fi network or `wifi_config.h` fallback has valid credentials
-- confirm the board joined your LAN in serial output
-- try the device IP shown in the serial log or `/api/state`
-- confirm your client OS/network supports mDNS `.local` resolution
+- confirm your client joined the hosted XIAO SSID
+- confirm the serial log shows the hosted SSID and SoftAP IP
+- confirm `kWifiPassword` is either blank or at least 8 characters
+- try `/api/state` directly at the IP shown in the serial log
 
 If the page loads but looks broken:
 
-- confirm the browser has internet access to fetch the CDN assets
+- confirm the browser has internet access, cached CDN assets, or another uplink to fetch the CDN assets
 
 If the RGB matrix does not light:
 

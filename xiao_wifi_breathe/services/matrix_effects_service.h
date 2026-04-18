@@ -4,6 +4,8 @@ void renderMatrixOff() {
   clearMatrixFrame();
 }
 
+int matrixEffectVariant3(const char *patternId, const char *firstId, const char *secondId, const char *thirdId);
+
 RgbColor matrixEffectBaseColor() {
   if (activeMatrixPattern == nullptr) {
     return makeColor(0x22, 0xc5, 0x5e);
@@ -89,6 +91,48 @@ RgbColor matrixEffectBaseColor() {
   }
   if (strcmp(activeMatrixPattern->id, "zigzag-trace") == 0) {
     return makeColor(0xc0, 0x84, 0xfc);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "aurora-drift", "aurora-fold", "aurora-borealis") >= 0) {
+    return makeColor(0x5e, 0xff, 0xd3);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "tidal-pulse", "undertow", "crosscurrent") >= 0) {
+    return makeColor(0x38, 0xbd, 0xf8);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "gravity-well", "graviton-lens", "singularity-burst") >= 0) {
+    return makeColor(0xa7, 0x8b, 0xfa);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "ember-updraft", "forge-bloom", "ashfall") >= 0) {
+    return makeColor(0xfb, 0x92, 0x3c);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "prism-fan", "prism-slice", "prism-cascade") >= 0) {
+    return makeColor(0xfa, 0xe8, 0x68);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "swarm", "swarm-weave", "swarm-burst") >= 0) {
+    return makeColor(0x7d, 0xfc, 0x8a);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "solar-flare", "corona-spin", "eclipse-ring") >= 0) {
+    return makeColor(0xfb, 0x71, 0x15);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "data-rain", "data-stream", "data-burst") >= 0) {
+    return makeColor(0x34, 0xd3, 0x99);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "dune-shift", "dune-rush", "dune-vault") >= 0) {
+    return makeColor(0xfb, 0xbf, 0x24);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "quake-lines", "fault-pulse", "fracture-field") >= 0) {
+    return makeColor(0xf8, 0x71, 0x71);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "sonar-ping", "sonar-fan", "sonar-net") >= 0) {
+    return makeColor(0x2d, 0xd4, 0xbf);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "starfield-warp", "hyperspace", "orbital-slip") >= 0) {
+    return makeColor(0x60, 0xa5, 0xfa);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "strobe-grid", "strobe-slices", "strobe-tunnel") >= 0) {
+    return makeColor(0xf8, 0xfa, 0xfc);
+  }
+  if (matrixEffectVariant3(activeMatrixPattern->id, "wave-lattice", "phase-knot", "caustic-flow") >= 0) {
+    return makeColor(0x67, 0xe8, 0xf9);
   }
 
   return makeColor(0x22, 0xc5, 0x5e);
@@ -217,6 +261,33 @@ void addSoftOrb(float centerRow, float centerColumn, float radius, const RgbColo
       addMatrixPixel(row, column, scaleColor(color, static_cast<uint8_t>(mask * intensityScale + 0.5f)));
     }
   }
+}
+
+uint8_t unitToScale(float value) {
+  return static_cast<uint8_t>(constrain(value, 0.0f, 1.0f) * 255.0f + 0.5f);
+}
+
+int matrixEffectVariant3(const char *patternId, const char *firstId, const char *secondId, const char *thirdId) {
+  if (strcmp(patternId, firstId) == 0) {
+    return 0;
+  }
+  if (strcmp(patternId, secondId) == 0) {
+    return 1;
+  }
+  if (strcmp(patternId, thirdId) == 0) {
+    return 2;
+  }
+
+  return -1;
+}
+
+float wrappedAngleDelta(float firstAngle, float secondAngle) {
+  float delta = fabsf(firstAngle - secondAngle);
+  if (delta > PI) {
+    delta = (2.0f * PI) - delta;
+  }
+
+  return delta;
 }
 
 void selectLightningEndpoints(uint32_t seed, int &startRow, int &startColumn, int &targetRow, int &targetColumn) {
@@ -1794,12 +1865,565 @@ void renderMatrixSpiralTrace(uint32_t now) {
   }
 }
 
+RgbColor twoHueColor(uint8_t firstHue, uint8_t secondHue, float mix, float intensity) {
+  return scaleColor(blendColors(colorWheel(firstHue), colorWheel(secondHue), unitToScale(mix)), unitToScale(intensity));
+}
+
+void addDirectionalTrail(float centerRow, float centerColumn, float rowStep, float columnStep, uint8_t length, const RgbColor &color, uint8_t headScale, uint8_t tailFloor) {
+  if (length == 0U || headScale == 0U) {
+    return;
+  }
+
+  for (uint8_t tail = 0U; tail < length; ++tail) {
+    const float row = centerRow - rowStep * tail;
+    const float column = centerColumn - columnStep * tail;
+    const uint16_t decay = static_cast<uint16_t>(tail) * 32U;
+    const uint8_t scale = tail == 0U ? headScale : max<uint8_t>(tailFloor, static_cast<uint8_t>(headScale > decay ? headScale - decay : tailFloor));
+    addMatrixPixel(static_cast<uint8_t>(lroundf(row)), static_cast<uint8_t>(lroundf(column)), scaleColor(color, scale));
+  }
+}
+
+void renderMatrixAurora(uint32_t now, uint8_t variant) {
+  clearMatrixFrame();
+
+  const float phase = static_cast<float>(now) / (variant == 0U ? 430.0f : (variant == 1U ? 320.0f : 260.0f));
+  const float foldSpeed = variant == 0U ? 0.66f : (variant == 1U ? 0.98f : 1.25f);
+  const uint8_t hueA = variant == 0U ? 88U : (variant == 1U ? 150U : 76U);
+  const uint8_t hueB = variant == 0U ? 154U : (variant == 1U ? 228U : 184U);
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    const float altitude = 1.0f - (static_cast<float>(row) / static_cast<float>(max<uint8_t>(1U, kMatrixRows - 1U)));
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float curtainA = 0.5f + 0.5f * sinf(column * 0.54f + phase + row * 0.34f);
+      const float curtainB = 0.5f + 0.5f * sinf(column * 0.18f - phase * 1.24f + row * 1.08f + variant * 0.9f);
+      const float fold = 0.5f + 0.5f * sinf(row * 1.25f - phase * foldSpeed + column * (variant == 1U ? 0.42f : 0.24f));
+      const float shimmer = 0.5f + 0.5f * sinf((row + 1.0f) * (column + 1.0f) * 0.17f + phase * 1.8f);
+      float intensity = (0.22f + 0.78f * altitude) * (0.28f + 0.72f * curtainA) * (0.30f + 0.70f * fold);
+      intensity *= variant == 1U ? (0.66f + 0.34f * curtainB) : (0.54f + 0.46f * shimmer);
+
+      RgbColor color = twoHueColor(
+        static_cast<uint8_t>(hueA + row * 7U + (now / 42U)),
+        static_cast<uint8_t>(hueB + column * 13U + (now / 58U)),
+        variant == 2U ? shimmer : curtainB,
+        intensity
+      );
+      const uint8_t whiteMix = unitToScale((variant == 2U ? 0.24f : 0.12f) * fold * shimmer);
+      setMatrixPixel(row, column, blendColors(color, makeColor(255, 255, 255), whiteMix));
+    }
+  }
+}
+
+void renderMatrixTidalFlow(uint32_t now, uint8_t variant) {
+  clearMatrixFrame();
+
+  const float phase = static_cast<float>(now) / (variant == 0U ? 260.0f : (variant == 1U ? 180.0f : 210.0f));
+  const RgbColor deep = variant == 1U ? makeColor(2, 18, 38) : makeColor(4, 24, 58);
+  const RgbColor mid = variant == 2U ? makeColor(18, 122, 160) : makeColor(10, 88, 146);
+  const RgbColor surface = variant == 0U ? makeColor(148, 255, 240) : (variant == 1U ? makeColor(77, 180, 255) : makeColor(255, 255, 255));
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float primary = 0.5f + 0.5f * sinf(row * 0.72f + column * 0.38f - phase);
+      const float secondary = 0.5f + 0.5f * sinf(column * 0.96f + phase * 1.27f - row * (variant == 1U ? 0.58f : 0.24f));
+      const float undertow = 0.5f + 0.5f * sinf(row * 1.18f - phase * 1.42f + column * 0.12f);
+      const float crest = variant == 0U ? primary : (variant == 1U ? (0.70f * primary + 0.30f * (1.0f - undertow)) : (0.55f * primary + 0.45f * secondary));
+      const float foam = bandStrength(crest, 0.92f, variant == 2U ? 0.18f : 0.12f);
+      const float intensity = min(1.0f, 0.18f + 0.70f * crest + 0.32f * foam);
+
+      RgbColor color = blendColors(deep, mid, unitToScale(crest));
+      color = blendColors(color, surface, unitToScale(foam * (variant == 2U ? 0.86f : 0.64f)));
+      setMatrixPixel(row, column, scaleColor(color, unitToScale(intensity)));
+    }
+  }
+}
+
+void renderMatrixGravityField(uint32_t now, uint8_t variant) {
+  clearMatrixFrame();
+
+  const float centerX = (kMatrixColumns - 1) * 0.5f;
+  const float centerY = (kMatrixRows - 1) * 0.5f;
+  const float phase = static_cast<float>(now) / (variant == 2U ? 180.0f : 320.0f);
+  const float wellAX = centerX + cosf(phase * 0.84f) * (variant == 0U ? 1.8f : 2.2f);
+  const float wellAY = centerY + sinf(phase * 1.12f) * (variant == 0U ? 1.4f : 1.0f);
+  const float wellBX = centerX + cosf(phase * 1.37f + PI) * 1.7f;
+  const float wellBY = centerY + sinf(phase * 0.96f + PI) * 1.3f;
+  const float burstRadius = 1.2f + fmodf(phase * 1.7f, 4.6f);
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float deltaAX = static_cast<float>(column) - wellAX;
+      const float deltaAY = static_cast<float>(row) - wellAY;
+      const float distanceA = sqrtf(deltaAX * deltaAX + deltaAY * deltaAY);
+      const float swirlA = 0.5f + 0.5f * sinf(distanceA * 4.2f - phase * 2.3f + atan2f(deltaAY, deltaAX) * (variant == 1U ? 2.0f : 1.0f));
+      RgbColor pixelColor = twoHueColor(
+        static_cast<uint8_t>(166U + row * 4U + (now / 46U)),
+        static_cast<uint8_t>(230U + column * 7U + (now / 62U)),
+        swirlA,
+        0.22f + 0.72f * radialStrength(distanceA, 4.2f)
+      );
+
+      if (variant != 0U) {
+        const float deltaBX = static_cast<float>(column) - wellBX;
+        const float deltaBY = static_cast<float>(row) - wellBY;
+        const float distanceB = sqrtf(deltaBX * deltaBX + deltaBY * deltaBY);
+        const float swirlB = 0.5f + 0.5f * sinf(distanceB * 4.6f - phase * 2.6f + atan2f(deltaBY, deltaBX) * 1.8f);
+        pixelColor = addColors(
+          pixelColor,
+          twoHueColor(
+            static_cast<uint8_t>(205U + column * 5U + (now / 38U)),
+            static_cast<uint8_t>(120U + row * 9U + (now / 54U)),
+            swirlB,
+            0.18f + 0.60f * radialStrength(distanceB, 3.6f)
+          )
+        );
+      }
+
+      const float centerDeltaX = static_cast<float>(column) - centerX;
+      const float centerDeltaY = static_cast<float>(row) - centerY;
+      const float centerDistance = sqrtf(centerDeltaX * centerDeltaX + centerDeltaY * centerDeltaY);
+      if (variant == 2U) {
+        const float burst = bandStrength(centerDistance, burstRadius, 0.55f);
+        pixelColor = addColors(pixelColor, scaleColor(blendColors(makeColor(64, 224, 255), makeColor(255, 255, 255), 96), unitToScale(burst)));
+      }
+
+      const float shadow = variant == 2U ? radialStrength(centerDistance, 0.92f) : max(radialStrength(distanceA, 0.72f), variant == 0U ? 0.0f : radialStrength(sqrtf(powf(static_cast<float>(column) - wellBX, 2.0f) + powf(static_cast<float>(row) - wellBY, 2.0f)), 0.72f));
+      setMatrixPixel(row, column, scaleColor(pixelColor, static_cast<uint8_t>(255U - unitToScale(shadow * 0.84f))));
+    }
+  }
+}
+
+void renderMatrixEmberField(uint32_t now, uint8_t variant) {
+  clearMatrixFrame();
+
+  const bool falling = variant == 2U;
+  const RgbColor topColor = falling ? makeColor(6, 10, 20) : makeColor(18, 4, 0);
+  const RgbColor bottomColor = variant == 1U ? makeColor(76, 18, 0) : (falling ? makeColor(20, 22, 34) : makeColor(52, 8, 0));
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    const uint8_t gradient = static_cast<uint8_t>((static_cast<uint16_t>(row) * 255U) / max<uint8_t>(1U, kMatrixRows - 1U));
+    const RgbColor background = blendColors(topColor, bottomColor, gradient);
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      setMatrixPixel(row, column, background);
+    }
+  }
+
+  if (variant == 1U) {
+    addSoftOrb(kMatrixRows - 0.7f, (kMatrixColumns - 1) * 0.5f + sinf(now / 250.0f) * 1.6f, 3.2f, makeColor(255, 80, 0), 84);
+  }
+
+  for (uint8_t particleIndex = 0U; particleIndex < 10U; ++particleIndex) {
+    const uint32_t seed = hash32(particleIndex * 811U + variant * 271U);
+    const uint32_t cycleMs = falling ? 980U : (variant == 1U ? 740U : 820U);
+    const float progress = static_cast<float>((now + (seed & 0x3FFU)) % cycleMs) / static_cast<float>(cycleMs);
+    float row = falling ? (-1.0f + progress * (kMatrixRows + 2.0f)) : (static_cast<float>(kMatrixRows) - progress * (kMatrixRows + 2.0f));
+    if (variant == 1U) {
+      row += 0.55f * sinf(progress * 2.0f * PI * 2.0f + particleIndex * 0.8f);
+    }
+
+    const float drift = sinf((now / 180.0f) + particleIndex * 0.9f + ((seed >> 6) & 0x7U)) * (variant == 1U ? 1.6f : 1.0f);
+    const float column = static_cast<float>(seed % kMatrixColumns) + drift * (falling ? 0.55f : 1.0f);
+    RgbColor color = falling
+      ? blendColors(makeColor(255, 170, 84), makeColor(128, 160, 255), unitToScale(progress))
+      : blendColors(makeColor(255, 96, 0), makeColor(255, 255, 255), variant == 1U ? 108U : 72U);
+    if (variant == 1U) {
+      color = blendColors(color, makeColor(255, 210, 120), 96);
+    }
+
+    addDirectionalTrail(row, column, falling ? 1.0f : -1.0f, drift * 0.18f, variant == 1U ? 4U : 3U, color, falling ? 150U : 220U, 28U);
+    addSoftOrb(row, column, falling ? 0.45f : 0.70f, blendColors(color, makeColor(255, 255, 255), falling ? 24U : 92U), falling ? 108U : 160U);
+  }
+}
+
+void renderMatrixPrismBurst(uint32_t now, uint8_t variant) {
+  clearMatrixFrame();
+
+  const float centerX = (kMatrixColumns - 1) * 0.5f;
+  const float centerY = (kMatrixRows - 1) * 0.5f;
+  const float phase = static_cast<float>(now) / (variant == 0U ? 210.0f : (variant == 1U ? 170.0f : 140.0f));
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      float intensity = 0.0f;
+      float mix = 0.0f;
+      if (variant == 0U) {
+        const float deltaX = static_cast<float>(column) + 1.0f;
+        const float deltaY = static_cast<float>(row) - (kMatrixRows - 1);
+        const float angle = atan2f(deltaY, deltaX);
+        const float radius = sqrtf(deltaX * deltaX + deltaY * deltaY);
+        const float spokeA = max(0.0f, 1.0f - (wrappedAngleDelta(angle, phase * 0.52f) / 0.34f));
+        const float spokeB = max(0.0f, 1.0f - (wrappedAngleDelta(angle, phase * 0.52f + 0.78f) / 0.28f));
+        intensity = min(1.0f, (spokeA + spokeB) * (0.36f + 0.64f * radialStrength(radius, 8.8f)));
+        mix = 0.5f + 0.5f * sinf(radius * 1.05f - phase * 1.2f);
+      } else if (variant == 1U) {
+        const float projection = column * 0.82f + row * 0.55f - phase * 2.6f;
+        const float slice = 0.5f + 0.5f * sinf(projection);
+        const float secondary = 0.5f + 0.5f * sinf(column * 1.1f - row * 0.6f + phase * 1.7f);
+        intensity = powf(slice, 1.9f) * (0.45f + 0.55f * secondary);
+        mix = secondary;
+      } else {
+        const float diagonal = column * 0.76f - row * 0.62f + phase * 2.4f;
+        const float cascade = 0.5f + 0.5f * sinf(diagonal);
+        const float sparkle = 0.5f + 0.5f * sinf(row * 1.2f + phase * 3.2f + column * 0.3f);
+        intensity = powf(cascade, 2.2f) * (0.34f + 0.66f * sparkle);
+        mix = 0.5f + 0.5f * sinf((row - centerY) * 0.9f + (column - centerX) * 0.3f + phase);
+      }
+
+      RgbColor color = twoHueColor(
+        static_cast<uint8_t>(12U + column * 14U + (now / 16U)),
+        static_cast<uint8_t>(160U + row * 17U + (now / 26U)),
+        mix,
+        intensity
+      );
+      const uint8_t whiteMix = unitToScale(intensity * (variant == 2U ? 0.36f : 0.20f));
+      setMatrixPixel(row, column, blendColors(color, makeColor(255, 255, 255), whiteMix));
+    }
+  }
+}
+
+void renderMatrixSwarmEffect(uint32_t now, uint8_t variant) {
+  fillMatrixFrame(scaleColor(matrixEffectBaseColor(), 5));
+
+  const float centerX = (kMatrixColumns - 1) * 0.5f;
+  const float centerY = (kMatrixRows - 1) * 0.5f;
+  const float phase = static_cast<float>(now) / (variant == 2U ? 130.0f : 220.0f);
+  const uint8_t agentCount = variant == 2U ? 7U : 6U;
+
+  for (uint8_t agent = 0U; agent < agentCount; ++agent) {
+    const uint32_t seed = hash32(agent * 911U + variant * 313U);
+    float column = centerX;
+    float row = centerY;
+    if (variant == 0U) {
+      column = centerX + sinf(phase * 1.2f + agent * 1.1f) * (2.0f + ((seed >> 6) & 0x3U) * 0.15f) + cosf(phase * 0.7f + agent) * 0.7f;
+      row = centerY + cosf(phase * 1.5f + agent * 0.9f) * (1.7f + ((seed >> 10) & 0x3U) * 0.12f);
+    } else if (variant == 1U) {
+      const float progress = fmodf(phase * 0.22f + agent * 0.17f, 1.0f);
+      column = -1.0f + progress * (kMatrixColumns + 2.0f);
+      row = centerY + sinf(progress * 2.0f * PI * 2.0f + agent) * 2.0f + 0.6f * cosf(phase + agent);
+    } else {
+      const float progress = fmodf(static_cast<float>(now + agent * 80U) / (620.0f + agent * 24.0f), 1.0f);
+      const float radius = triangleUnit(progress) * 4.5f;
+      const float angle = agent * 1.1f + phase * 0.9f;
+      column = centerX + cosf(angle) * radius;
+      row = centerY + sinf(angle * 1.18f) * radius * 0.68f;
+    }
+
+    const RgbColor color = blendColors(colorWheel(static_cast<uint8_t>((now / 18U) + agent * 43U)), colorWheel(static_cast<uint8_t>(80U + agent * 29U)), variant == 1U ? 144U : 92U);
+    addSoftOrb(row, column, variant == 2U ? 0.95f : 1.25f, color, variant == 2U ? 124U : 104U);
+    addSoftOrb(row, column, 0.42f, blendColors(color, makeColor(255, 255, 255), 132), 170U);
+  }
+}
+
+void renderMatrixSolarField(uint32_t now, uint8_t variant) {
+  clearMatrixFrame();
+
+  const float centerX = (kMatrixColumns - 1) * 0.5f;
+  const float centerY = (kMatrixRows - 1) * 0.5f;
+  const float phase = static_cast<float>(now) / 250.0f;
+  const float moonX = centerX + sinf(phase * 0.7f) * 1.2f;
+  const float moonY = centerY + cosf(phase * 0.51f) * 0.6f;
+
+  for (uint8_t row = 0; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0; column < kMatrixColumns; ++column) {
+      const float deltaX = static_cast<float>(column) - centerX;
+      const float deltaY = static_cast<float>(row) - centerY;
+      const float angle = atan2f(deltaY, deltaX);
+      const float distance = sqrtf(deltaX * deltaX + deltaY * deltaY);
+      float intensity = 0.0f;
+      RgbColor color = makeColor(0, 0, 0);
+
+      if (variant == 0U) {
+        const float core = radialStrength(distance, 2.9f);
+        const float rays = max(0.0f, 1.0f - (wrappedAngleDelta(angle, phase * 0.94f + sinf(distance * 0.8f) * 0.24f) / 0.20f));
+        const float flare = 0.5f + 0.5f * sinf(angle * 4.0f - phase * 1.8f + distance * 1.1f);
+        intensity = min(1.0f, core * 0.82f + rays * (1.0f - distance / 6.0f) * 0.90f + flare * 0.18f);
+        color = blendColors(makeColor(255, 96, 0), makeColor(255, 228, 96), unitToScale(core));
+      } else if (variant == 1U) {
+        const float ring = bandStrength(distance, 1.8f + 0.22f * sinf(phase * 1.8f), 0.55f);
+        const float spoke = max(0.0f, 1.0f - (wrappedAngleDelta(angle, phase * 1.3f + distance * 0.12f) / 0.18f));
+        const float coreShadow = radialStrength(distance, 1.0f);
+        intensity = min(1.0f, ring * 0.94f + spoke * (1.0f - coreShadow) * 0.52f);
+        color = blendColors(makeColor(255, 108, 0), makeColor(255, 255, 255), unitToScale(ring * 0.60f));
+      } else {
+        const float moonDeltaX = static_cast<float>(column) - moonX;
+        const float moonDeltaY = static_cast<float>(row) - moonY;
+        const float moonDistance = sqrtf(moonDeltaX * moonDeltaX + moonDeltaY * moonDeltaY);
+        const float corona = bandStrength(distance, 2.6f, 0.65f);
+        const float rim = bandStrength(moonDistance, 1.62f, 0.42f);
+        const float shadow = radialStrength(moonDistance, 1.46f);
+        intensity = min(1.0f, corona * 0.72f + rim * 0.98f);
+        color = blendColors(makeColor(255, 120, 0), makeColor(96, 160, 255), unitToScale(rim));
+        color = scaleColor(color, static_cast<uint8_t>(255U - unitToScale(shadow * 0.92f)));
+      }
+
+      const uint8_t whiteMix = unitToScale(intensity * (variant == 0U ? 0.22f : 0.14f));
+      setMatrixPixel(row, column, blendColors(scaleColor(color, unitToScale(intensity)), makeColor(255, 255, 255), whiteMix));
+    }
+  }
+}
+
+void renderMatrixDataFlow(uint32_t now, uint8_t variant) {
+  fillMatrixFrame(makeColor(0, variant == 2U ? 8 : 14, variant == 1U ? 10 : 4));
+
+  if (variant == 0U) {
+    for (uint8_t column = 0U; column < kMatrixColumns; ++column) {
+      const uint32_t seed = hash32(column * 277U + 17U);
+      const uint32_t cycleMs = 420U + (seed & 0x1FFU);
+      const float head = (static_cast<float>((now + ((seed >> 9) & 0x3FFU)) % cycleMs) / static_cast<float>(cycleMs)) * (kMatrixRows + 4.0f) - 2.0f;
+      const RgbColor streamColor = blendColors(makeColor(30, 255, 144), makeColor(120, 255, 255), static_cast<uint8_t>(seed & 0x7FU));
+      for (uint8_t row = 0U; row < kMatrixRows; ++row) {
+        const float distance = head - row;
+        if (distance >= 0.0f && distance < 4.2f) {
+          const float intensity = 1.0f - (distance / 4.2f);
+          setMatrixPixel(row, column, scaleColor(streamColor, unitToScale(intensity)));
+        } else if ((hash32((now / 120U) * 131U + column * 37U + row * 17U) & 0x1FU) == 0U) {
+          addMatrixPixel(row, column, scaleColor(streamColor, 38));
+        }
+      }
+    }
+    return;
+  }
+
+  if (variant == 1U) {
+    for (uint8_t row = 0U; row < kMatrixRows; ++row) {
+      const uint32_t seed = hash32(row * 401U + 97U);
+      const uint32_t cycleMs = 420U + (seed & 0xFFU);
+      const float head = (static_cast<float>((now + ((seed >> 11) & 0x3FFU)) % cycleMs) / static_cast<float>(cycleMs)) * (kMatrixColumns + 5.0f) - 2.0f;
+      const RgbColor streamColor = blendColors(makeColor(0, 255, 220), makeColor(120, 255, 150), static_cast<uint8_t>(seed & 0x7FU));
+      for (uint8_t column = 0U; column < kMatrixColumns; ++column) {
+        const float distance = head - column;
+        if (distance >= 0.0f && distance < 4.5f) {
+          const float intensity = 1.0f - (distance / 4.5f);
+          setMatrixPixel(row, column, scaleColor(streamColor, unitToScale(intensity)));
+        }
+      }
+    }
+    return;
+  }
+
+  const float centerX = (kMatrixColumns - 1) * 0.5f;
+  const float centerY = (kMatrixRows - 1) * 0.5f;
+  const float packetFront = fmodf(static_cast<float>(now) / 110.0f, static_cast<float>(kMatrixRows + kMatrixColumns));
+  for (uint8_t row = 0U; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0U; column < kMatrixColumns; ++column) {
+      const float manhattan = fabsf(static_cast<float>(row) - centerY) + fabsf(static_cast<float>(column) - centerX);
+      const float packet = bandStrength(manhattan, packetFront, 0.9f);
+      const float grid = max(0.0f, 1.0f - fabsf(sinf(column * 1.6f + now / 90.0f) * cosf(row * 1.4f - now / 120.0f)));
+      const uint32_t noise = hash32((now / 80U) * 193U + row * 47U + column * 89U);
+      RgbColor color = blendColors(makeColor(0, 255, 190), makeColor(96, 180, 255), unitToScale(grid));
+      color = scaleColor(color, unitToScale(min(1.0f, packet * 0.92f + ((noise & 0x7U) == 0U ? 0.14f : 0.0f))));
+      setMatrixPixel(row, column, color);
+    }
+  }
+}
+
+void renderMatrixDuneFlow(uint32_t now, uint8_t variant) {
+  clearMatrixFrame();
+
+  const float phase = static_cast<float>(now) / (variant == 0U ? 360.0f : (variant == 1U ? 160.0f : 280.0f));
+  for (uint8_t row = 0U; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0U; column < kMatrixColumns; ++column) {
+      const float ridge = 0.5f + 0.5f * sinf(column * 0.72f - phase + row * 0.38f);
+      const float secondary = 0.5f + 0.5f * sinf(column * 0.24f + phase * 0.58f - row * 0.82f);
+      const float gust = variant == 1U ? (0.5f + 0.5f * sinf(column * 1.42f + row * 0.94f - phase * 2.4f)) : 0.0f;
+      const float vault = variant == 2U ? max(0.0f, 1.0f - (fabsf(static_cast<float>(column) - (kMatrixColumns - 1) * 0.5f) / 3.6f)) : 0.0f;
+      const float intensity = min(1.0f, (0.20f + 0.80f * ridge) * (0.50f + 0.50f * secondary) + gust * 0.28f + vault * 0.22f);
+      RgbColor color = blendColors(makeColor(72, 28, 0), makeColor(214, 134, 34), unitToScale(ridge));
+      color = blendColors(color, makeColor(255, 220, 120), unitToScale(secondary * (variant == 1U ? 0.38f : 0.22f)));
+      setMatrixPixel(row, column, scaleColor(color, unitToScale(intensity)));
+    }
+  }
+}
+
+void renderMatrixQuake(uint32_t now, uint8_t variant) {
+  clearMatrixFrame();
+
+  const uint32_t cycleMs = variant == 2U ? 680U : 900U;
+  const uint32_t eventIndex = now / cycleMs;
+  const uint32_t local = now % cycleMs;
+  const uint8_t faultCount = variant == 2U ? 3U : (variant == 1U ? 2U : 1U);
+  const float shockRadius = 0.6f + (static_cast<float>(local) / static_cast<float>(cycleMs)) * 7.0f;
+
+  for (uint8_t row = 0U; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0U; column < kMatrixColumns; ++column) {
+      RgbColor pixelColor = makeColor(0, 0, 0);
+      for (uint8_t faultIndex = 0U; faultIndex < faultCount; ++faultIndex) {
+        const uint32_t seed = hash32(eventIndex * 991U + faultIndex * 131U + variant * 29U);
+        const int baseColumn = 1 + static_cast<int>(seed % max<uint8_t>(1U, kMatrixColumns - 2U));
+        const int jitter = lroundf(sinf(row * 0.95f + (seed & 0xFFU) * 0.03f + local / 140.0f) * (variant == 2U ? 2.6f : 1.8f));
+        const int noiseOffset = static_cast<int>((hash32(seed + row * 53U) & 0x3U)) - 1;
+        const int crackColumn = constrain(baseColumn + jitter + noiseOffset, 0, kMatrixColumns - 1);
+        const int epicenterRow = static_cast<int>((seed >> 8) % kMatrixRows);
+        const float crackMask = max(0.0f, 1.0f - (fabsf(static_cast<float>(column) - crackColumn) / (variant == 1U ? 1.2f : 0.8f)));
+        const float shockDistance = sqrtf(powf(static_cast<float>(column) - baseColumn, 2.0f) + powf(static_cast<float>(row) - epicenterRow, 2.0f));
+        const float shock = bandStrength(shockDistance, shockRadius + faultIndex * 0.6f, 0.55f);
+        const float flicker = 0.5f + 0.5f * sinf(local / 70.0f + row * 0.8f + faultIndex);
+        const float intensity = min(1.0f, crackMask * (0.56f + 0.44f * flicker) + shock * 0.82f);
+        const RgbColor color = twoHueColor(
+          static_cast<uint8_t>(faultIndex * 24U + (now / 26U)),
+          static_cast<uint8_t>(40U + faultIndex * 18U + row * 6U),
+          shock,
+          intensity
+        );
+        pixelColor = addColors(pixelColor, color);
+      }
+
+      setMatrixPixel(row, column, pixelColor);
+    }
+  }
+}
+
+void renderMatrixSonar(uint32_t now, uint8_t variant) {
+  clearMatrixFrame();
+
+  const float centerX = variant == 1U ? -1.0f : ((kMatrixColumns - 1) * 0.5f + sinf(now / 520.0f) * 0.8f);
+  const float centerY = variant == 1U ? (kMatrixRows - 1) * 0.5f : ((kMatrixRows - 1) * 0.5f + cosf(now / 610.0f) * 0.7f);
+  const float phase = static_cast<float>(now) / 280.0f;
+
+  for (uint8_t row = 0U; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0U; column < kMatrixColumns; ++column) {
+      const float deltaX = static_cast<float>(column) - centerX;
+      const float deltaY = static_cast<float>(row) - centerY;
+      const float angle = atan2f(deltaY, deltaX);
+      const float distance = sqrtf(deltaX * deltaX + deltaY * deltaY);
+      float intensity = 0.0f;
+
+      if (variant == 0U) {
+        const float ping = bandStrength(distance, fmodf(phase * 2.0f, 6.4f), 0.42f);
+        const float sweep = max(0.0f, 1.0f - (wrappedAngleDelta(angle, phase * 0.9f) / 0.22f));
+        intensity = min(1.0f, ping * 0.92f + sweep * 0.56f * radialStrength(distance, 6.4f));
+      } else if (variant == 1U) {
+        const float fanCenter = (phase * 0.72f) - 0.8f;
+        const float fan = max(0.0f, 1.0f - (wrappedAngleDelta(angle, fanCenter) / 0.52f));
+        const float band = bandStrength(distance, 2.2f + fmodf(phase * 1.6f, 4.6f), 0.55f);
+        intensity = min(1.0f, fan * (0.34f + 0.66f * radialStrength(distance, 7.0f)) + band * 0.48f);
+      } else {
+        const float horizontal = bandStrength(static_cast<float>(column), fmodf(phase * 2.4f, kMatrixColumns + 1.0f), 0.48f);
+        const float vertical = bandStrength(static_cast<float>(row), fmodf(phase * 1.9f, kMatrixRows + 1.0f), 0.48f);
+        intensity = min(1.0f, horizontal * 0.72f + vertical * 0.72f);
+      }
+
+      RgbColor color = blendColors(makeColor(4, 36, 48), makeColor(64, 255, 220), unitToScale(intensity));
+      color = blendColors(color, makeColor(255, 255, 255), unitToScale(intensity * 0.18f));
+      setMatrixPixel(row, column, color);
+    }
+  }
+}
+
+void renderMatrixStarfield(uint32_t now, uint8_t variant) {
+  fillMatrixFrame(makeColor(0, 0, 6));
+
+  const float centerX = (kMatrixColumns - 1) * 0.5f;
+  const float centerY = (kMatrixRows - 1) * 0.5f;
+  const float basePhase = static_cast<float>(now) / 680.0f;
+
+  for (uint8_t star = 0U; star < 12U; ++star) {
+    const uint32_t seed = hash32(star * 547U + variant * 97U);
+    const RgbColor starColor = blendColors(makeColor(96, 160, 255), makeColor(255, 255, 255), static_cast<uint8_t>((seed >> 8) & 0x7FU));
+
+    if (variant < 2U) {
+      const float progress = fmodf((variant == 1U ? static_cast<float>(now) / 420.0f : basePhase) + (seed & 0xFFU) / 255.0f, 1.0f);
+      const float angle = ((seed >> 8) & 0xFFU) / 255.0f * (2.0f * PI);
+      const float radius = progress * progress * (variant == 1U ? 7.4f : 6.0f);
+      const float column = centerX + cosf(angle) * radius;
+      const float row = centerY + sinf(angle) * radius * 0.82f;
+      addDirectionalTrail(
+        row,
+        column,
+        sinf(angle) * (variant == 1U ? 0.95f : 0.62f),
+        cosf(angle) * (variant == 1U ? 1.35f : 0.90f),
+        variant == 1U ? 5U : 3U,
+        starColor,
+        220U,
+        16U
+      );
+      continue;
+    }
+
+    const float progress = fmodf(static_cast<float>(now) / (640.0f + star * 17.0f) + (seed & 0x3FU) / 64.0f, 1.0f);
+    const float column = fmodf(progress * (kMatrixColumns + 4.0f) - 2.0f + sinf(now / 300.0f + star) * 0.8f + (seed & 0x3U), kMatrixColumns + 4.0f) - 2.0f;
+    const float row = fmodf(progress * (kMatrixRows + 3.0f) - 1.0f + cosf(now / 360.0f + star * 0.7f) * 1.5f, kMatrixRows + 3.0f) - 1.0f;
+    addDirectionalTrail(row, column, -0.35f, 0.70f, 4U, starColor, 210U, 20U);
+  }
+}
+
+void renderMatrixStrobe(uint32_t now, uint8_t variant) {
+  clearMatrixFrame();
+
+  const float beat = fmodf(static_cast<float>(now) / (variant == 2U ? 120.0f : 160.0f), 1.0f);
+  const float gateA = heartbeatEnvelope(beat);
+  const float gateB = pulseWindow(beat, 0.66f, 0.12f);
+  const float centerX = (kMatrixColumns - 1) * 0.5f;
+  const float centerY = (kMatrixRows - 1) * 0.5f;
+
+  for (uint8_t row = 0U; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0U; column < kMatrixColumns; ++column) {
+      float flash = 0.0f;
+      if (variant == 0U) {
+        flash = ((row + column) & 1U) == 0U ? gateA : gateB;
+        flash += ((row % 2U) == 0U || (column % 2U) == 0U) ? gateB * 0.35f : 0.0f;
+      } else if (variant == 1U) {
+        const float slice = 0.5f + 0.5f * sinf((column * 0.9f + row * 1.2f) - now / 55.0f);
+        flash = max(gateA * slice, gateB * (1.0f - slice));
+      } else {
+        const float diamond = fabsf(static_cast<float>(column) - centerX) + fabsf(static_cast<float>(row) - centerY);
+        const float tunnel = bandStrength(diamond, 1.0f + triangleUnit(beat) * 4.0f, 0.7f);
+        flash = max(gateA * 0.72f, tunnel);
+      }
+
+      RgbColor color = blendColors(colorWheel(static_cast<uint8_t>((now / 10U) + row * 18U + column * 12U)), makeColor(255, 255, 255), unitToScale(flash * 0.62f));
+      setMatrixPixel(row, column, scaleColor(color, unitToScale(min(1.0f, flash))));
+    }
+  }
+}
+
+void renderMatrixPhaseField(uint32_t now, uint8_t variant) {
+  clearMatrixFrame();
+
+  const float phase = static_cast<float>(now) / (variant == 2U ? 210.0f : 280.0f);
+  const float centerX = (kMatrixColumns - 1) * 0.5f;
+  const float centerY = (kMatrixRows - 1) * 0.5f;
+
+  for (uint8_t row = 0U; row < kMatrixRows; ++row) {
+    for (uint8_t column = 0U; column < kMatrixColumns; ++column) {
+      float intensity = 0.0f;
+      float mix = 0.0f;
+      if (variant == 0U) {
+        const float waveX = 0.5f + 0.5f * sinf(column * 1.12f + phase);
+        const float waveY = 0.5f + 0.5f * sinf(row * 1.34f - phase * 1.18f);
+        intensity = waveX * waveY;
+        mix = waveX;
+      } else if (variant == 1U) {
+        const float deltaX = static_cast<float>(column) - centerX;
+        const float deltaY = static_cast<float>(row) - centerY;
+        const float angle = atan2f(deltaY, deltaX);
+        const float distance = sqrtf(deltaX * deltaX + deltaY * deltaY);
+        intensity = 0.5f + 0.5f * sinf(angle * 3.0f + distance * 1.7f - phase * 1.9f);
+        mix = 0.5f + 0.5f * sinf(distance * 2.6f + phase * 1.4f);
+      } else {
+        const float causticA = max(0.0f, sinf(column * 0.92f + phase * 1.3f));
+        const float causticB = max(0.0f, sinf(row * 1.16f - phase * 1.1f));
+        const float causticC = max(0.0f, sinf((column + row) * 0.58f + phase * 1.9f));
+        intensity = min(1.0f, (causticA + causticB + causticC) / 1.8f);
+        mix = 0.5f + 0.5f * sinf((column - row) * 0.64f + phase * 0.8f);
+      }
+
+      RgbColor color = twoHueColor(
+        static_cast<uint8_t>(120U + row * 8U + (now / 26U)),
+        static_cast<uint8_t>(190U + column * 10U + (now / 34U)),
+        mix,
+        intensity
+      );
+      setMatrixPixel(row, column, color);
+    }
+  }
+}
+
 void renderMatrixFrame(uint32_t now) {
   if (activeMatrixPattern == nullptr) {
     clearMatrixFrame();
     return;
   }
 
+  int effectVariant = -1;
   if (strcmp(activeMatrixPattern->id, kMatrixSolidPatternId) == 0) {
     renderMatrixSolid();
   } else if (strcmp(activeMatrixPattern->id, "scanner") == 0) {
@@ -1886,6 +2510,34 @@ void renderMatrixFrame(uint32_t now) {
     renderMatrixZigzagTrace(now);
   } else if (strcmp(activeMatrixPattern->id, "spiral-trace") == 0) {
     renderMatrixSpiralTrace(now);
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "aurora-drift", "aurora-fold", "aurora-borealis")) >= 0) {
+    renderMatrixAurora(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "tidal-pulse", "undertow", "crosscurrent")) >= 0) {
+    renderMatrixTidalFlow(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "gravity-well", "graviton-lens", "singularity-burst")) >= 0) {
+    renderMatrixGravityField(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "ember-updraft", "forge-bloom", "ashfall")) >= 0) {
+    renderMatrixEmberField(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "prism-fan", "prism-slice", "prism-cascade")) >= 0) {
+    renderMatrixPrismBurst(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "swarm", "swarm-weave", "swarm-burst")) >= 0) {
+    renderMatrixSwarmEffect(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "solar-flare", "corona-spin", "eclipse-ring")) >= 0) {
+    renderMatrixSolarField(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "data-rain", "data-stream", "data-burst")) >= 0) {
+    renderMatrixDataFlow(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "dune-shift", "dune-rush", "dune-vault")) >= 0) {
+    renderMatrixDuneFlow(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "quake-lines", "fault-pulse", "fracture-field")) >= 0) {
+    renderMatrixQuake(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "sonar-ping", "sonar-fan", "sonar-net")) >= 0) {
+    renderMatrixSonar(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "starfield-warp", "hyperspace", "orbital-slip")) >= 0) {
+    renderMatrixStarfield(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "strobe-grid", "strobe-slices", "strobe-tunnel")) >= 0) {
+    renderMatrixStrobe(now, static_cast<uint8_t>(effectVariant));
+  } else if ((effectVariant = matrixEffectVariant3(activeMatrixPattern->id, "wave-lattice", "phase-knot", "caustic-flow")) >= 0) {
+    renderMatrixPhaseField(now, static_cast<uint8_t>(effectVariant));
   } else if (strcmp(activeMatrixPattern->id, kMatrixMoodPatternId) == 0) {
     renderMatrixMood();
   } else if (strcmp(activeMatrixPattern->id, kMatrixMessagePatternId) == 0) {

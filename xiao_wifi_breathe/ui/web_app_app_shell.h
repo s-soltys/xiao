@@ -770,5 +770,12 @@ const char kWebAppAppShell[] PROGMEM = R"HTML(
         );
       }
 
-      ReactDOM.createRoot(document.getElementById('root')).render(<AppShell />);
+      try {
+        ReactDOM.createRoot(document.getElementById('root')).render(<AppShell />);
+        if (window.__xiaoMarkUiLoaded) {
+          window.__xiaoMarkUiLoaded();
+        }
+      } catch (error) {
+        console.error('Unable to render the full device console.', error);
+      }
 )HTML";
